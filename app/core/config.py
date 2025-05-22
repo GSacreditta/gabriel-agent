@@ -3,6 +3,7 @@ from functools import lru_cache
 import os
 from pathlib import Path
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +25,42 @@ class Settings(BaseSettings):
     APP_NAME: str = "Gabriel Agent Task Flow"
     DEBUG: bool = True
     
+    # Slack settings
+    SLACK_BOT_TOKEN: Optional[str] = None
+    SLACK_SIGNING_SECRET: Optional[str] = None
+    SLACK_APP_TOKEN: Optional[str] = None
+    SLACK_DEFAULT_CHANNEL: Optional[str] = None
+    
     class Config:
         env_file = ".env"
+        case_sensitive = True
 
     def get_google_credentials_path(self) -> Path:
         """Get the absolute path to the Google credentials file."""
-        base_dir = Path(__file__).resolve().parent.parent.parent
-        return base_dir / "config" / "credentials" / "location-19291-fb284eccae8d.json"
+        try:
+            # First try to use the environment variable if set
+            if self.GOOGLE_APPLICATION_CREDENTIALS:
+                creds_path = Path(self.GOOGLE_APPLICATION_CREDENTIALS)
+                if creds_path.is_file() and creds_path.exists():
+                    return creds_path
+                else:
+                    logger.warning(f"Credentials file not found at {creds_path}, falling back to default location")
+            
+            # Fallback to default location
+            base_dir = Path(__file__).resolve().parent.parent.parent
+            creds_path = base_dir / "config" / "credentials" / "location-19291-fb284eccae8d.json"
+            
+            if not creds_path.exists():
+                raise FileNotFoundError(f"Google credentials file not found at {creds_path}")
+            
+            # Verify we can read the file
+            if not os.access(creds_path, os.R_OK):
+                raise PermissionError(f"No read permission for credentials file at {creds_path}")
+                
+            return creds_path
+        except Exception as e:
+            logger.error(f"Error accessing Google credentials: {str(e)}")
+            raise
 
 @lru_cache()
 def get_settings():

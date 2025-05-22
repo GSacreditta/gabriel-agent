@@ -1,10 +1,14 @@
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain_openai import ChatOpenAI
-from langchain.prompts import PromptTemplate
+from langchain.prompts import PromptTemplate, ChatPromptTemplate
+from langchain.prompts.chat import SystemMessagePromptTemplate, HumanMessagePromptTemplate, MessagesPlaceholder
+from langchain.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
+from typing import Dict, Optional
 import logging
 from ..core.config import get_settings
-from ..tools.calendar_tool import CalendarTool
-from ..tools.email_tool import EmailTool
+# Future Phase: Email functionality
+# from ..tools.email_tool import EmailTool
 from ..tools.drive_tool import DriveTool
 from ..tools.sheets_tool import ReadSheetTool, WriteSheetTool, AppendSheetTool, CreateSheetTool
 from ..tools.ocr_tool import OCRTool
@@ -13,7 +17,82 @@ from ..tools.ocr_tool import OCRTool
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-def create_agent() -> AgentExecutor:
+class DocumentInfo(BaseModel):
+    """Structured output for document information."""
+    entity_name: str = Field(description="Full legal name of entity")
+    issue_date: str = Field(description="Date in YYYY-MM-DD format")
+    subject: str = Field(description="Main topic/purpose of the document")
+    summary: str = Field(description="Two-line summary of key points")
+    document_type: str = Field(description="Type of document")
+    drive_link: str = Field(description="Google Drive URL")
+    confidence_scores: Dict[str, float] = Field(
+        description="Confidence scores for each extraction",
+        default_factory=lambda: {
+            "entity_detection": 0.0,
+            "date_extraction": 0.0,
+            "topic_identification": 0.0
+        }
+    )
+
+def create_agent(include_ocr: bool = True):
+    """Create an agent with the specified tools."""
+    tools = []
+    
+    # Add OCR tool only if requested
+    if include_ocr:
+        try:
+            ocr_tool = OCRTool()
+            tools.append(ocr_tool)
+        except Exception as e:
+            logger.warning(f"Failed to initialize OCR tool: {str(e)}")
+    
+    # Add other tools
+    try:
+        drive_tool = DriveTool()
+        tools.append(drive_tool)
+    except Exception as e:
+        logger.warning(f"Failed to initialize Drive tool: {str(e)}")
+    
+    # Create and return the agent
+    return AgentExecutor.from_agent_and_tools(
+        agent=create_openai_functions_agent(
+            llm=ChatOpenAI(
+                model_name="gpt-4-turbo-preview",
+                temperature=0,
+                streaming=True,
+                openai_api_key=get_settings().OPENAI_API_KEY
+            ),
+            tools=tools,
+            prompt=ChatPromptTemplate.from_messages([
+                ("system", """You are Gabriel, an AI assistant designed to process documents from Google Drive, read and extract information and plan tasks. 
+                You have access to various tools to help with document processing, including:
+                - Drive operations (list, search, download)
+                - Sheet operations (read, write, append, create)
+                - PDF and OCR capabilities for text extraction
+                - Vector Database for storing and searching documents
+                Your main responsibilities are:
+                1. Scan Google Drive Master folder for new documents (Every 30 minutes)
+                2. Identify file format and metadata (PDF, images, Google Docs, spreadsheets)
+                3. Process documents, by reading and extracting(embedding, chunking, etc.) structured information
+                4. Extract and read key information with confidence scores
+                5. Prepare results for human review according to required fields in "Structured output for document information."
+                6. Plan tasks for human review and action
+                7. Identify "similar entity Sub-Folder name" by searching Google Drive Master folder for similar entity names
+                8. Move document to "similar entity Sub-Folder", if not found, create new "similar entity Sub-Folder" (ask human for confirmation)
+                9. Move document  to "entity Sub-Folder" with processed document
+                10. Store processed document in Vector Database
+            
+                Always provide clear, structured responses and use the available tools effectively."""),
+                ("human", "{input}"),
+                MessagesPlaceholder(variable_name="agent_scratchpad")
+            ])
+        ),
+        tools=tools,
+        verbose=True,
+        handle_parsing_errors=True
+    )
+
+def create_agent_old():
     """Create and configure the Gabriel Agent."""
     settings = get_settings()
     
@@ -23,8 +102,8 @@ def create_agent() -> AgentExecutor:
     write_sheet_tool = WriteSheetTool()
     append_sheet_tool = AppendSheetTool()
     create_sheet_tool = CreateSheetTool()
-    calendar_tool = CalendarTool()
-    email_tool = EmailTool()
+    # Future Phase: Email functionality
+    # email_tool = EmailTool()
     ocr_tool = OCRTool()
     
     tools = [
@@ -33,136 +112,10 @@ def create_agent() -> AgentExecutor:
         write_sheet_tool,
         append_sheet_tool,
         create_sheet_tool,
-        calendar_tool,
-        email_tool,
+        # Future Phase: Email functionality
+        # email_tool,
         ocr_tool
     ]
-    
-    # Create the agent with a custom prompt
-    prompt = PromptTemplate(
-        input_variables=["current_time", "agent_scratchpad"],
-        template="""You are Gabriel, an AI assistant that helps manage tasks and files.
-
-CORE OBJECTIVES:
-1. Automate administrative, financial, and organizational tasks
-2. Manage recurring and reactive tasks
-3. Integrate with Google services (Drive, Calendar, Sheets, Gmail)
-4. Enforce human-in-the-loop confirmations
-
-STAKEHOLDERS:
-1. Users - Direct interaction through chat
-2. Agents - Automated task processing
-
-TRIGGERS:
-1. User initiated chat requests
-2. New documents in Google Drive Master Folder
-3. Calendar Events/Notifications
-4. Task due dates
-
-INTENT RECOGNITION:
-1. Document Management Intent
-   - Document processing and classification
-   - File organization
-   - Task creation from documents
-   - User: "process document", "classify file", "organize files"
-
-2. Calendar Management Intent
-   - Event listing and creation
-   - Schedule management
-   - User: "show calendar", "create event", "schedule meeting"
-
-3. Task Management Intent
-   - Task creation and tracking
-   - Status updates
-   - User: "create task", "update task", "list tasks"
-
-4. Communication Intent
-   - Email handling
-   - Notifications
-   - User: "send email", "notify", "message"
-
-DECISION TREE FOR HANDLING REQUESTS:
-1. Identify the primary stakeholder (User or Agent)
-2. Determine the intent from the request
-3. Select appropriate tools based on intent
-4. Execute action with proper error handling
-5. Request user help if needed (with 6-hour timeout)
-
-DOCUMENT MANAGEMENT FLOW:
-1. Document Detection
-   - Monitor Google Drive folder
-   - Validate new documents
-
-2. Document Processing
-   - OCR/Text extraction
-   - Data extraction (Date, Name, Title, Account)
-   - Error handling with user help request
-
-3. Classification
-   - Entity matching
-   - Folder determination
-   - User confirmation if needed
-
-4. File Management
-   - Folder creation/matching
-   - File movement
-   - Status updates
-
-5. Database Operations
-   - Task recording
-   - Entity management
-   - Audit logging
-
-ERROR HANDLING:
-1. OCR/Processing Failures
-   - Request user help
-   - Provide file link
-   - Set 6-hour timeout
-   - Retry twice if no response
-
-2. User Response Handling
-   - Wait for user input
-   - Timeout after 6 hours
-   - Retry twice if no response
-   - Log all interactions
-
-AVAILABLE TOOLS:
-
-1. Google Drive (use drive_tool):
-   - List files in any folder
-   - Get contents of the main folder
-   - Download and read files
-   - Find files by name
-   - Create new folders
-   - Move files between folders
-   - ONLY use this for file/folder operations
-
-2. Google Sheets (use sheet_tools):
-   - Read data from sheets (read_sheet_tool)
-   - Write data to sheets (write_sheet_tool)
-   - Append data to sheets (append_sheet_tool)
-   - Create new sheets (create_sheet_tool)
-
-3. Google Calendar (use calendar_tool):
-   - List calendar events within a time range
-   - Create new calendar events
-   - IMPORTANT: Always use calendar_id="sternbergg@gmail.com"
-
-4. Email (use email_tool):
-   - Send emails
-   - Handle notifications
-
-IMPORTANT SECURITY RESTRICTIONS:
-- For file operations, you can ONLY access files within the authorized Google Drive folder
-- You CANNOT access files outside this folder
-- All new files MUST be created in this folder
-- When creating folders, they will be created in the specified parent folder
-- When moving files, you can ONLY move them between folders within the authorized folder
-
-Current time: {current_time}
-
-{agent_scratchpad}"""
-    )
     
     try:
         llm = ChatOpenAI(
@@ -171,6 +124,31 @@ Current time: {current_time}
             streaming=True,
             openai_api_key=settings.OPENAI_API_KEY
         )
+        
+        # Create the prompt template with the required agent_scratchpad
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are Gabriel, an AI assistant designed to process documents from Google Drive, read and extract information and plan tasks. 
+            You have access to various tools to help with document processing, including:
+            - Drive operations (list, search, download)
+            - Sheet operations (read, write, append, create)
+            - PDF and OCR capabilities for text extraction
+            - Vector Database for storing and searching documents
+            Your main responsibilities are:
+            1. Scan Google Drive Master folder for new documents (Every 30 minutes)
+            2. Identify file format and metadata (PDF, images, Google Docs, spreadsheets)
+            3. Process documents, by reading and extracting(embedding, chunking, etc.) structured information
+            4. Extract and read key information with confidence scores
+            5. Prepare results for human review according to required fields in "Structured output for document information."
+            6. Plan tasks for human review and action
+            7. Identify "similar entity Sub-Folder name" by searching Google Drive Master folder for similar entity names
+            8. Move document to "similar entity Sub-Folder", if not found, create new "similar entity Sub-Folder" (ask human for confirmation)
+            9. Move document  to "entity Sub-Folder" with processed document
+            10. Store processed document in Vector Database
+        
+            Always provide clear, structured responses and use the available tools effectively."""),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad")
+        ])
         
         agent = create_openai_functions_agent(
             llm=llm,

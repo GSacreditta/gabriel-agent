@@ -1,0 +1,341 @@
+# Gabriel Agent - Product Requirements Document (PRD)
+
+## 1. Product Overview
+Gabriel Agent is an AI-powered personal assistant designed to manage structured tasks, reminders, and file-based workflows. The system leverages advanced AI capabilities to process documents, organize information, and provide intelligent task management. The agent uses LangChain, ChromaDB for vector storage, and OpenAI to create a powerful document processing and task management system. The primary interface is through Slack, which serves both as the user interface and the Human-Device Interface (HDI).
+
+## 2. Target Users
+- Professionals managing multiple documents and tasks
+- Users requiring automated document processing
+- Individuals seeking intelligent task organization
+- Teams needing workflow automation
+- Financial analysts processing investment reports
+- Researchers managing large document collections
+
+## 3. Core Features
+
+### 3.1 Document Processing
+- PDF investment report analysis
+- Text extraction and summarization
+- Key information identification
+- Document metadata extraction
+- Support for multiple document formats
+- OCR capabilities for scanned documents
+- Document similarity analysis
+- Automated document categorization
+- Document relationship mapping
+- Content-based search and retrieval
+- Vector embeddings storage in ChromaDB
+- Document chunking and processing
+
+### 3.2 File Organization
+- Automatic folder structure creation
+- Smart file categorization
+- Metadata-based organization
+- Custom organization rules
+- File relationship mapping
+- Version control integration
+- Backup and recovery options
+- Storage optimization
+- File access control
+- Automated cleanup routines
+- Google Drive integration
+
+### 3.3 Task Management
+- Task creation and tracking
+- Priority-based organization
+- Deadline management
+- Task dependencies
+- Progress tracking
+- Automated task summarization
+- Task templates and workflows
+- Recurring task management
+- Task delegation capabilities
+- Task analytics and reporting
+
+### 3.4 User Interface
+- Slack-based chat interface
+- Interactive command processing
+- Status reporting
+- Progress visualization
+- Error handling and feedback
+- Custom command aliases
+- Interactive help system
+- Command history and suggestions
+- Batch command processing
+- Configuration management
+- Human-Device Interface (HDI) through Slack
+
+### 3.5 AI Integration
+- LangChain-based processing
+- OpenAI API integration
+- ChromaDB vector storage
+- Semantic search capabilities
+- Context-aware processing
+- Natural language understanding
+- Automated learning and adaptation
+- Custom model fine-tuning
+- Multi-model support
+- Performance optimization
+
+## 4. Technical Requirements
+
+### 4.1 System Architecture
+- Python-based backend
+- FastAPI framework
+- Modular service architecture
+- API integration capabilities
+- Secure data handling
+- Scalable design
+- Microservices architecture
+- Event-driven processing
+- Asynchronous operations
+- Caching mechanisms
+- Load balancing support
+
+### 4.2 External Dependencies
+- Google Cloud API
+- ChromaDB (Vector Database)
+- OpenAI API (LangChain)
+- PDF processing libraries
+- File system management
+- Slack API
+- OCR engines
+- Cloud storage services
+- Authentication services
+
+### 4.3 Performance Requirements
+- Document processing time < 30 seconds
+- Task response time < 5 seconds
+- 99.9% uptime
+- Concurrent task handling
+- Efficient resource utilization
+- Scalable processing
+- Memory optimization
+- CPU utilization optimization
+- Network bandwidth management
+- Storage optimization
+
+## 5. API Endpoints
+
+### 5.1 Core Endpoints
+- `/chat` - Main chat interface
+- `/process-document` - Document processing
+- `/process-document-enhanced` - Advanced document processing
+- `/health` - System health check
+- `/test-drive` - Google Drive connection test
+
+### 5.2 Testing Endpoints
+- `/test-ocr` - OCR functionality test
+- `/test-folder` - Folder structure test
+- `/test-document-flow` - Document processing flow test
+- `/test-embeddings` - Vector embeddings test
+- `/test-pdf` - PDF processing test
+- `/test-similarity` - Document similarity test
+
+### 5.3 Slack Integration
+- `/slack/events` - Slack event handling
+- `/slack/chat` - Slack chat interface
+
+## 6. Security Requirements
+- Secure API key management
+- Data encryption
+- Access control
+- Audit logging
+- Regular security updates
+- Data backup and recovery
+- Secure communication
+- User authentication
+- Role-based access control
+- Compliance monitoring
+
+## 7. Future Enhancements
+- Web interface
+- Mobile application
+- Advanced analytics
+- Custom workflow creation
+- Integration with additional services
+- Multi-language support
+- Real-time collaboration
+- Advanced AI capabilities
+- Custom plugin system
+- API marketplace
+
+## 8. Success Metrics
+- User adoption rate
+- Task completion efficiency
+- Document processing accuracy
+- System response time
+- User satisfaction metrics
+- Processing throughput
+- Error rate reduction
+- Resource utilization
+- Cost efficiency
+- System reliability
+
+## 9. Development Phases
+
+### Phase 1: MVP (Current)
+- Basic document processing
+- Simple folder organization
+- Task management fundamentals
+- Slack interface integration
+- Core AI integration
+- Basic security features
+- Essential API integrations
+- Initial testing framework
+- ChromaDB vector storage
+- Google Drive integration
+
+### Phase 2: Enhancement
+- Advanced document analysis
+- Custom organization rules
+- Enhanced task management
+- Performance optimization
+- Extended AI capabilities
+- Advanced security features
+- Additional API integrations
+- Comprehensive testing
+- Enhanced Slack integration
+- Advanced vector search
+
+### Phase 3: Expansion
+- Web interface development
+- Additional integrations
+- Advanced analytics
+- Mobile support
+- Enterprise features
+- Advanced AI capabilities
+- Global deployment
+- Enterprise security
+
+## 10. Maintenance and Support
+- Regular updates
+- Bug fixes
+- Performance monitoring
+- User feedback integration
+- Documentation updates
+- Security patches
+- Feature enhancements
+- System optimization
+- User support
+- Training materials
+
+## 11. Timeline and Milestones
+- MVP completion: Q2 2024
+- Phase 2 completion: Q3 2024
+- Phase 3 completion: Q4 2024
+- Ongoing maintenance and updates
+- Regular feature releases
+- Security updates
+- Performance optimizations
+- User feedback implementation 
+### 5.4 Human-Device Interface (HDI) Flow
+1. **Review Request Process**
+   - Agent sends review request to Slack
+   - Message includes review instructions
+   - Approval/Rejection options provided
+   - Real-time status updates
+
+2. **Confirmation Options**
+   - :white_check_mark: Approve
+   - :x: Reject
+   - Custom response handling
+   - Status tracking
+
+3. **Response Handling**
+   - Approval triggers next step
+   - Rejection initiates review
+   - Error handling
+   - Status notifications
+
+4. **Integration Points**
+   - Slack message handling
+   - Channel management
+   - User interaction
+   - Status tracking
+
+### 5.5 Database Schema Requirements
+
+#### 5.5.1 Core Tables
+
+1. **Tasks Table**
+   - Primary key: Task ID (Txxx)
+   - Fields:
+     - Description (Text)
+     - Type (Enum: Payment, Reminder, etc.)
+     - Entity (Foreign Key to Entities)
+     - Due Date (Date)
+     - Frequency (Text)
+     - Status (Enum: Pending, Completed, etc.)
+     - Priority (Enum: High, Medium, Low)
+     - Notes (Text)
+
+2. **Entities Table**
+   - Primary key: Entity ID (Exxx)
+   - Fields:
+     - Name (Text)
+     - Category (Enum: Education, Finance, etc.)
+     - Contact Info (Text)
+     - Notes (Text)
+
+3. **Obligations Table**
+   - Primary key: Obligation ID (Oxxx)
+   - Fields:
+     - Description (Text)
+     - Related Entity (Foreign Key to Entities)
+     - Frequency (Text)
+     - Trigger Date (Date)
+     - Reminder Lead Time (Integer, days)
+     - Last Completed (Date)
+
+4. **Authorizations Table**
+   - Primary key: Auth ID (Axxx)
+   - Fields:
+     - Entity (Foreign Key to Entities)
+     - Task Type (Enum: Payment, Access, etc.)
+     - Level (Enum: Limited, Full, etc.)
+     - Expiry (Date)
+     - Notes (Text)
+
+#### 5.5.2 Relationships
+- Tasks → Entities (Many-to-One)
+- Obligations → Entities (Many-to-One)
+- Authorizations → Entities (Many-to-One)
+- Tasks → Obligations (Optional Many-to-One)
+
+#### 5.5.3 Implementation Phases
+1. **Phase 1: Core Structure**
+   - Basic table creation
+   - Primary relationships
+   - Essential fields
+
+2. **Phase 2: Extended Features**
+   - Additional fields
+   - Complex relationships
+   - Indexing and optimization
+
+3. **Phase 3: Advanced Features**
+   - Audit logging
+   - Version control
+   - Advanced querying capabilities
+
+#### 5.5.4 Data Integrity Rules
+1. **Entity Management**
+   - Unique Entity IDs
+   - Required contact information
+   - Category validation
+
+2. **Task Management**
+   - Valid due dates
+   - Status transitions
+   - Priority levels
+
+3. **Obligation Tracking**
+   - Valid frequency patterns
+   - Trigger date validation
+   - Completion tracking
+
+4. **Authorization Control**
+   - Expiry date validation
+   - Level restrictions
+   - Entity association validation

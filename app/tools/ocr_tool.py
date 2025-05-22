@@ -37,7 +37,7 @@ class OCRTool(BaseTool):
     def __init__(self):
         """Initialize the OCR tool with OCR service."""
         super().__init__()
-        self.ocr_service = OCRService()
+        object.__setattr__(self, '_ocr_service', OCRService())
     
     async def _arun(self, **kwargs) -> str:
         """
@@ -56,9 +56,9 @@ class OCRTool(BaseTool):
             logger.debug(f"Starting OCR processing for file: {file_id}")
             
             if extract_structured:
-                result = await self.ocr_service.process_document(file_id)
+                result = await self._ocr_service.process_document(file_id)
             else:
-                result = await self.ocr_service.extract_text(file_id)
+                result = await self._ocr_service.extract_text(file_id)
             
             return json.dumps(result)
             
