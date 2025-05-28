@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     SLACK_APP_TOKEN: Optional[str] = None
     SLACK_DEFAULT_CHANNEL: Optional[str] = None
     
+    # Ngrok settings
+    NGROK_AUTH_TOKEN: Optional[str] = None
+    NGROK_DOMAIN: Optional[str] = None
+    PUBLIC_URL: Optional[str] = None 
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

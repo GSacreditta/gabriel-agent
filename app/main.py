@@ -15,6 +15,9 @@ from app.services.embedding_service import EmbeddingService
 from app.services.ocr_service import OCRService
 from app.services.pdf_service import PDFService
 from app.services.similarity_service import SimilarityService
+from app.services.scheduler_service import SchedulerService
+from slack_sdk import WebClient
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -25,6 +28,9 @@ logger = logging.getLogger(__name__)
 
 # Get settings
 settings = get_settings()
+
+SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
+slack_client = WebClient(token=SLACK_BOT_TOKEN)
 
 class ChatRequest(BaseModel):
     message: str
@@ -64,10 +70,11 @@ app.add_middleware(
 agent = None
 drive_service = None
 slack_service = None
+scheduler_service = None
 
 async def initialize_services():
     """Initialize all required services asynchronously."""
-    global agent, drive_service, slack_service
+    global agent, drive_service, slack_service, scheduler_service
     try:
         # Initialize agent
         agent = create_agent()
@@ -80,6 +87,12 @@ async def initialize_services():
         # Initialize Slack service
         slack_service = SlackService()
         logger.info("Slack Service initialized successfully")
+        
+        # Initialize and start scheduler
+        scheduler_service = SchedulerService()
+        await scheduler_service.initialize(drive_service, agent, slack_service)
+        scheduler_service.start()
+        logger.info("Scheduler Service initialized and started successfully")
         
     except Exception as e:
         logger.error(f"Failed to initialize services: {str(e)}")
@@ -126,7 +139,9 @@ async def shutdown_event():
     """Cleanup on shutdown."""
     logger.info("Application shutdown event triggered")
     try:
-        # Add any cleanup tasks here
+        if scheduler_service:
+            scheduler_service.stop()
+            logger.info("Scheduler stopped successfully")
         logger.info("Shutdown tasks completed successfully")
     except Exception as e:
         logger.error(f"Error during shutdown: {str(e)}")
@@ -568,70 +583,53 @@ async def test_similarity(file_id: str, query: str):
 
 @app.post("/slack/events")
 async def slack_events(request: Request):
-    """Handle Slack events."""
-    try:
-        # Parse the request body
-        body = await request.json()
-        event = SlackEvent(**body)
+    logger.info("Received a request at /slack/events")
+    body = await request.json()
+    logger.debug(f"Request body: {body}")
+    
+    if body.get("type") == "url_verification":
+        logger.info("Handling URL verification request")
+        return {"challenge": body.get("challenge")}
         
-        # Handle URL verification
-        if event.type == "url_verification":
-            return {"challenge": event.challenge}
+    if body.get("type") == "event_callback":
+        event = body.get("event", {})
+        logger.info(f"Event received: {event}")
+        
+        if event.get("type") == "message" and not event.get("bot_id"):
+            user_message = event.get("text")
+            channel = event["channel"]
+            logger.info(f"Processing message from channel {channel}: {user_message}")
             
-        # Handle message events
-        if event.type == "event_callback":
-            event_type = event.event.get("type")
-            
-            if event_type == "message":
-                # Ignore bot messages
-                if event.event.get("bot_id"):
-                    return {"status": "ignored", "reason": "bot_message"}
-                    
-                # Get the message text
-                message = event.event.get("text", "")
-                channel = event.event.get("channel")
+            try:
+                if not agent:
+                    logger.error("Agent not initialized")
+                    await slack_service.send_message(
+                        message="Sorry, I'm not properly initialized yet. Please try again in a moment.",
+                        channel=channel
+                    )
+                    return {"status": "error", "message": "Agent not initialized"}
                 
-                # Process the message with the agent
-                input_params = {
-                    "current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "agent_scratchpad": [],
-                    "message": message
-                }
-                
-                response = await agent.ainvoke(input_params)
+                # Get response from your agent
+                logger.info("Getting response from agent")
+                agent_response = await agent.process_message(user_message)
+                logger.info(f"Agent response: {agent_response}")
                 
                 # Send the response back to Slack
-                await slack_service.send_review_request(
-                    message=response.get("output", ""),
+                logger.info("Sending response to Slack")
+                await slack_service.send_message(
+                    message=agent_response,
+                    channel=channel
+                )
+                logger.info("Response sent successfully")
+            except Exception as e:
+                logger.error(f"Error processing message: {str(e)}")
+                logger.error(f"Traceback: {''.join(traceback.format_exception(type(e), e, e.__traceback__))}")
+                await slack_service.send_message(
+                    message="Sorry, I encountered an error processing your message.",
                     channel=channel
                 )
                 
-            elif event_type == "reaction_added":
-                # Handle reactions for feedback
-                reaction = event.event.get("reaction")
-                channel = event.event.get("item", {}).get("channel")
-                timestamp = event.event.get("item", {}).get("ts")
-                
-                if reaction in ["white_check_mark", "x"]:
-                    # Get the original message
-                    messages = await slack_service.get_channel_messages(channel)
-                    if messages["success"]:
-                        for msg in messages["messages"]:
-                            if msg.get("ts") == timestamp:
-                                # Store feedback in vector store
-                                feedback = {
-                                    "message": msg.get("text", ""),
-                                    "feedback": "approved" if reaction == "white_check_mark" else "rejected",
-                                    "timestamp": datetime.now().isoformat()
-                                }
-                                # TODO: Store feedback in vector store
-                                break
-                
-        return {"status": "success"}
-        
-    except Exception as e:
-        logger.error(f"Error handling Slack event: {str(e)}")
-        return {"status": "error", "error": str(e)}
+    return {"status": "ok"}
 
 @app.post("/slack/chat")
 async def slack_chat(message: str, channel: str = None):
