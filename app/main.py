@@ -3,6 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.services.google_drive import GoogleDriveService
 from app.services.agent import create_agent
 from app.services.slack_service import SlackService
+from app.services.ocr_service import OCRService
+from app.services.vector_storage_service import VectorStorageService
+from app.services.file_discovery_service import FileDiscoveryService
+from app.services.document_processor import DocumentProcessorService
+from app.services.scheduler_service import SchedulerService
 from app.core.config import get_settings
 from pydantic import BaseModel
 import logging
@@ -12,17 +17,19 @@ import asyncio
 from datetime import datetime
 from typing import Optional, Dict, Any
 from app.services.embedding_service import EmbeddingService
-from app.services.ocr_service import OCRService
 from app.services.pdf_service import PDFService
 from app.services.similarity_service import SimilarityService
-from app.services.scheduler_service import SchedulerService
 from slack_sdk import WebClient
 import os
 
 # Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # Output to console
+        logging.FileHandler('app.log')  # Also save to file
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -70,27 +77,51 @@ app.add_middleware(
 agent = None
 drive_service = None
 slack_service = None
+ocr_service = None
+vector_service = None
+file_discovery = None
+document_processor = None
 scheduler_service = None
 
 async def initialize_services():
     """Initialize all required services asynchronously."""
-    global agent, drive_service, slack_service, scheduler_service
+    global agent, drive_service, slack_service, ocr_service, vector_service
+    global file_discovery, document_processor, scheduler_service
+    
     try:
-        # Initialize agent
+        # Initialize base services
         agent = create_agent()
-        logger.info("Gabriel Agent initialized successfully")
-        
-        # Initialize drive service
         drive_service = GoogleDriveService()
-        logger.info("Google Drive Service initialized successfully")
-        
-        # Initialize Slack service
         slack_service = SlackService()
-        logger.info("Slack Service initialized successfully")
+        ocr_service = OCRService()
+        vector_service = VectorStorageService()
         
-        # Initialize and start scheduler
+        logger.info("Base services initialized successfully")
+        
+        # Initialize document processor service first
+        document_processor = DocumentProcessorService()
+        await document_processor.initialize(
+            ocr_service=ocr_service,
+            vector_service=vector_service,
+            drive_service=drive_service,
+            agent=agent,
+            slack_service=slack_service
+        )
+        logger.info("Document Processor Service initialized successfully")
+        
+        # Initialize file discovery service with document processor
+        file_discovery = FileDiscoveryService()
+        await file_discovery.initialize(drive_service, document_processor)
+        logger.info("File Discovery Service initialized successfully")
+        
+        # Initialize and start scheduler last
         scheduler_service = SchedulerService()
-        await scheduler_service.initialize(drive_service, agent, slack_service)
+        await scheduler_service.initialize(
+            drive_service=drive_service,
+            agent=agent,
+            slack_service=slack_service,
+            file_discovery=file_discovery
+        )
         scheduler_service.start()
         logger.info("Scheduler Service initialized and started successfully")
         
@@ -649,6 +680,68 @@ async def slack_chat(message: str, channel: str = None):
         raise HTTPException(
             status_code=500,
             detail=f"Error sending message to Slack: {str(e)}"
+        )
+
+@app.post("/test-scheduler-scan")
+async def test_scheduler_scan():
+    """Test endpoint to manually trigger the scheduler's scan function."""
+    try:
+        logger.info("Received request to test scheduler scan")
+        
+        if not scheduler_service:
+            logger.error("Scheduler service not initialized")
+            raise HTTPException(status_code=503, detail="Scheduler service not initialized")
+            
+        logger.info("Starting manual scheduler scan")
+        # Manually trigger the scan
+        result = await scheduler_service.scan_documents()
+        logger.info("Manual scheduler scan completed")
+        
+        return {
+            "status": "success" if result["success"] else "error",
+            "message": result.get("message", "Scan completed"),
+            "error": result.get("error"),
+            "files_processed": result.get("files_processed", 0)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in test-scheduler-scan endpoint: {str(e)}")
+        logger.error(f"Traceback: {''.join(traceback.format_exception(type(e), e, e.__traceback__))}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error triggering scheduler scan: {str(e)}"
+        )
+
+@app.get("/test-drive-folder")
+async def test_drive_folder():
+    """Test endpoint to verify Google Drive folder access and permissions."""
+    try:
+        logger.info("Testing Google Drive folder access")
+        if not drive_service:
+            raise HTTPException(status_code=503, detail="Drive service not initialized")
+        
+        # List files in folder
+        try:
+            files = await drive_service.get_folder_contents()
+            logger.info(f"Found {len(files) if files else 0} files in folder")
+            return {
+                "status": "success",
+                "folder_id": settings.GOOGLE_DRIVE_FOLDER_ID,
+                "file_count": len(files) if files else 0,
+                "files": files
+            }
+        except Exception as e:
+            logger.error(f"Error listing folder contents: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error listing folder contents: {str(e)}"
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in test-drive-folder endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error testing drive folder: {str(e)}"
         )
 
 if __name__ == "__main__":

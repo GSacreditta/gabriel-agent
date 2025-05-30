@@ -1,13 +1,23 @@
 from google.cloud import vision
 from google.cloud.vision_v1 import types
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import asyncio
 from ..core.config import get_settings
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import io
+import os
+import tempfile
+from pathlib import Path
+import shutil
+import fitz  # PyMuPDF
+from PIL import Image
+import base64
+import json
+from datetime import datetime, timedelta
+import pickle
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -19,20 +29,39 @@ class OCRService:
     def __init__(self):
         """Initialize the OCR service with Google Cloud Vision client."""
         try:
-            self.client = vision.ImageAnnotatorClient()
             self.settings = get_settings()
+            logger.debug(f"Loading credentials from: {self.settings.get_google_credentials_path()}")
             
-            # Initialize Google Drive API client
-            credentials = service_account.Credentials.from_service_account_file(
-                self.settings.GOOGLE_APPLICATION_CREDENTIALS,
-                scopes=['https://www.googleapis.com/auth/drive.readonly']
+            # Initialize credentials with token refresh
+            self.credentials = service_account.Credentials.from_service_account_file(
+                self.settings.get_google_credentials_path(),
+                scopes=['https://www.googleapis.com/auth/cloud-vision']
             )
-            self.drive_service = build('drive', 'v3', credentials=credentials)
             
-            logger.info("OCR Service initialized successfully")
+            # Set token expiry to 55 minutes (5 minutes before the 60-minute limit)
+            self.credentials.expiry = datetime.utcnow() + timedelta(minutes=55)
+            
+            logger.debug("Credentials loaded successfully")
+            
+            # Initialize the Vision client
+            self.client = vision.ImageAnnotatorClient(credentials=self.credentials)
+            logger.debug("Vision client initialized successfully")
+            
+            # Store the last token refresh time
+            self.last_refresh = datetime.utcnow()
+            
         except Exception as e:
-            logger.error(f"Failed to initialize OCR Service: {str(e)}")
+            logger.error(f"Error initializing OCRService: {str(e)}")
             raise
+
+    def __del__(self):
+        """Cleanup temporary directory on object destruction."""
+        try:
+            if hasattr(self, 'temp_dir') and self.temp_dir.exists():
+                shutil.rmtree(self.temp_dir)
+                logger.info(f"Cleaned up temp directory: {self.temp_dir}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup temp directory: {str(e)}")
 
     async def extract_text(self, file_id: str) -> Dict[str, Any]:
         """
@@ -49,87 +78,185 @@ class OCRService:
                 - file_id (str): The processed file ID
         """
         try:
-            logger.debug(f"Starting text extraction for file: {file_id}")
+            logger.debug(f"Starting OCR text extraction for file: {file_id}")
             
             # Get file content from Google Drive
-            # Note: This is a placeholder - we'll need to implement the actual file download
             file_content = await self._get_file_content(file_id)
             
-            # Create image object
-            image = types.Image(content=file_content)
-            
-            # Perform text detection
-            response = await asyncio.to_thread(
-                self.client.document_text_detection,
-                image=image
-            )
-            
-            if response.error.message:
-                logger.error(f"Error in OCR processing: {response.error.message}")
-                return {
-                    "success": False,
-                    "error": response.error.message,
-                    "file_id": file_id
-                }
-            
-            # Extract text from response
-            text = response.full_text_annotation.text
-            
-            logger.debug(f"Successfully extracted text from file: {file_id}")
-            return {
-                "success": True,
-                "text": text,
-                "file_id": file_id
-            }
-            
+            # Check if file is a PDF
+            if file_id.lower().endswith('.pdf'):
+                return await self._process_pdf(file_content, file_id)
+            else:
+                return await self._process_image(file_content, file_id)
+                
         except Exception as e:
-            logger.error(f"Error in text extraction: {str(e)}")
+            logger.error(f"Error in OCR text extraction: {str(e)}")
             return {
                 "success": False,
-                "error": str(e),
+                "error": f"Failed to extract text: {str(e)}",
                 "file_id": file_id
             }
 
-    async def _get_file_content(self, file_id: str) -> bytes:
-        """
-        Get file content from Google Drive.
-        
-        Args:
-            file_id (str): The Google Drive file ID
-            
-        Returns:
-            bytes: The file content
-            
-        Raises:
-            Exception: If file download fails
-        """
+    async def _process_pdf(self, file_content: bytes, file_id: str) -> Dict[str, Any]:
+        """Process PDF file for OCR."""
         try:
-            logger.debug(f"Downloading file content for file ID: {file_id}")
+            # Create a temporary file for the PDF
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+                temp_file.write(file_content)
+                temp_file_path = temp_file.name
             
-            # Get file metadata to check MIME type
-            file_metadata = self.drive_service.files().get(
-                fileId=file_id,
-                fields='mimeType'
-            ).execute()
+            try:
+                # Open PDF with PyMuPDF
+                doc = fitz.open(temp_file_path)
+                total_pages = len(doc)
+                logger.debug(f"Processing PDF with {total_pages} pages")
+                
+                all_text = []
+                for page_num in range(total_pages):
+                    try:
+                        # Convert page to image
+                        page = doc[page_num]
+                        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 2x zoom for better quality
+                        
+                        # Convert to PIL Image
+                        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                        
+                        # Convert to bytes
+                        img_byte_arr = io.BytesIO()
+                        img.save(img_byte_arr, format='PNG')
+                        img_byte_arr = img_byte_arr.getvalue()
+                        
+                        # Perform OCR on the image
+                        image = vision.Image(content=img_byte_arr)
+                        response = self.client.text_detection(image=image)
+                        
+                        if response.error.message:
+                            logger.error(f"Error in Vision API: {response.error.message}")
+                            continue
+                        
+                        if response.text_annotations:
+                            page_text = response.text_annotations[0].description
+                            if page_text.strip():
+                                all_text.append(page_text)
+                                logger.debug(f"Successfully extracted text from page {page_num + 1}")
+                            else:
+                                logger.warning(f"No text found on page {page_num + 1}")
+                        else:
+                            logger.warning(f"No text annotations found on page {page_num + 1}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error processing page {page_num + 1}: {str(e)}")
+                        continue
+                
+                if all_text:
+                    return {
+                        "success": True,
+                        "text": "\n\n".join(all_text),
+                        "file_id": file_id,
+                        "is_scanned": True
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": "No text could be extracted from the PDF",
+                        "file_id": file_id,
+                        "is_scanned": True
+                    }
+                    
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(temp_file_path)
+                except Exception as e:
+                    logger.warning(f"Failed to remove temporary file: {str(e)}")
+                    
+        except Exception as e:
+            logger.error(f"Error processing PDF: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Failed to process PDF: {str(e)}",
+                "file_id": file_id,
+                "is_scanned": True
+            }
+
+    async def _process_image(self, file_content: bytes, file_id: str) -> Dict[str, Any]:
+        """Process image file for OCR."""
+        try:
+            # Create image object for Vision API
+            image = vision.Image(content=file_content)
             
-            mime_type = file_metadata.get('mimeType', '')
+            # Perform OCR
+            response = self.client.text_detection(image=image)
             
-            # Download file content
-            request = self.drive_service.files().get_media(fileId=file_id)
-            file = io.BytesIO()
-            downloader = MediaIoBaseDownload(file, request)
+            if response.error.message:
+                logger.error(f"Error in Vision API: {response.error.message}")
+                return {
+                    "success": False,
+                    "error": f"Vision API error: {response.error.message}",
+                    "file_id": file_id
+                }
             
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-                logger.debug(f"Download progress: {int(status.progress() * 100)}%")
+            if response.text_annotations:
+                text = response.text_annotations[0].description
+                if text.strip():
+                    return {
+                        "success": True,
+                        "text": text.strip(),
+                        "file_id": file_id
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": "No text found in image",
+                        "file_id": file_id
+                    }
+            else:
+                return {
+                    "success": False,
+                    "error": "No text annotations found",
+                    "file_id": file_id
+                }
+                
+        except Exception as e:
+            logger.error(f"Error processing image: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Failed to process image: {str(e)}",
+                "file_id": file_id
+            }
+
+    async def _ensure_valid_token(self):
+        """Ensure the token is valid and refresh if necessary."""
+        try:
+            # Check if token needs refresh (within 5 minutes of expiry)
+            if datetime.utcnow() + timedelta(minutes=5) >= self.credentials.expiry:
+                logger.debug("Token needs refresh, refreshing now...")
+                
+                # Refresh the token
+                self.credentials.refresh(None)
+                
+                # Update expiry to 55 minutes from now
+                self.credentials.expiry = datetime.utcnow() + timedelta(minutes=55)
+                self.last_refresh = datetime.utcnow()
+                
+                logger.debug("Token refreshed successfully")
+                
+        except Exception as e:
+            logger.error(f"Error refreshing token: {str(e)}")
+            raise
+
+    async def _get_file_content(self, file_id: str) -> bytes:
+        """Get file content from Google Drive."""
+        try:
+            # Ensure token is valid before making the request
+            await self._ensure_valid_token()
             
-            content = file.getvalue()
-            logger.debug(f"Successfully downloaded file content for file ID: {file_id}")
-            return content
+            from .google_drive import GoogleDriveService
+            drive_service = GoogleDriveService()
+            return await drive_service.download_file(file_id)
             
         except Exception as e:
-            logger.error(f"Error downloading file content: {str(e)}")
+            logger.error(f"Error getting file content: {str(e)}")
             raise
 
     async def process_document(self, file_id: str) -> Dict[str, Any]:
@@ -167,7 +294,8 @@ class OCRService:
                     "raw_text": text,
                     "extracted_fields": structured_data
                 },
-                "file_id": file_id
+                "file_id": file_id,
+                "is_scanned": extraction_result.get("is_scanned", False)
             }
             
         except Exception as e:

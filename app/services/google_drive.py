@@ -5,6 +5,8 @@ from ..core.config import get_settings
 import logging
 import io
 import os
+import asyncio
+from datetime import datetime, timedelta
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -15,73 +17,76 @@ class GoogleDriveService:
             self.settings = get_settings()
             logger.debug(f"Loading credentials from: {self.settings.get_google_credentials_path()}")
             
-            # Read and log the first few characters of the credentials file (safely)
-            with open(self.settings.get_google_credentials_path(), 'r') as f:
-                creds_content = f.read()
-                logger.debug(f"Credentials file starts with: {creds_content[:50]}...")
-            
+            # Initialize credentials with token refresh
             self.credentials = service_account.Credentials.from_service_account_file(
                 self.settings.get_google_credentials_path(),
                 scopes=['https://www.googleapis.com/auth/drive']
             )
+            
+            # Set token expiry to 55 minutes (5 minutes before the 60-minute limit)
+            self.credentials.expiry = datetime.utcnow() + timedelta(minutes=55)
+            
             logger.debug("Credentials loaded successfully")
             
+            # Build the service with auto-refresh
             self.service = build('drive', 'v3', credentials=self.credentials)
             logger.debug("Drive service built successfully")
+            
+            # Store the last token refresh time
+            self.last_refresh = datetime.utcnow()
+            
         except Exception as e:
             logger.error(f"Error initializing GoogleDriveService: {str(e)}")
             raise
 
-    def list_files(self, folder_id: str = None):
-        """List files in the specified folder or root if no folder_id provided."""
+    async def _ensure_valid_token(self):
+        """Ensure the token is valid and refresh if necessary."""
         try:
-            query = f"'{folder_id}' in parents" if folder_id else None
-            logger.debug(f"Querying files with query: {query}")
-            
-            results = self.service.files().list(
-                q=query,
-                pageSize=10,
-                fields="nextPageToken, files(id, name, mimeType)"
-            ).execute()
-            
-            files = results.get('files', [])
-            logger.debug(f"Found {len(files)} files")
-            return files
+            # Check if token needs refresh (within 5 minutes of expiry)
+            if datetime.utcnow() + timedelta(minutes=5) >= self.credentials.expiry:
+                logger.debug("Token needs refresh, refreshing now...")
+                
+                # Refresh the token
+                self.credentials.refresh(None)
+                
+                # Update expiry to 55 minutes from now
+                self.credentials.expiry = datetime.utcnow() + timedelta(minutes=55)
+                self.last_refresh = datetime.utcnow()
+                
+                logger.debug("Token refreshed successfully")
+                
         except Exception as e:
-            logger.error(f"Error listing files: {str(e)}")
+            logger.error(f"Error refreshing token: {str(e)}")
             raise
 
-    def get_folder_contents(self):
-        """Get contents of the main SM18_FO folder."""
+    async def get_folder_contents(self):
+        """Get contents of the authorized folder with token refresh."""
         try:
-            logger.debug(f"Getting contents of folder: {self.settings.GOOGLE_DRIVE_FOLDER_ID}")
-            return self.list_files(self.settings.GOOGLE_DRIVE_FOLDER_ID)
+            # Ensure token is valid before making the request
+            await self._ensure_valid_token()
+            
+            def _list_files():
+                results = self.service.files().list(
+                    q=f"'{self.settings.GOOGLE_DRIVE_FOLDER_ID}' in parents",
+                    fields="files(id, name, mimeType, createdTime, modifiedTime)"
+                ).execute()
+                return results.get('files', [])
+            
+            files = await asyncio.to_thread(_list_files)
+            logger.debug(f"Found {len(files)} files in folder")
+            return files
+            
         except Exception as e:
             logger.error(f"Error getting folder contents: {str(e)}")
             raise
 
-    def download_file(self, file_id: str) -> str:
-        """Download a file from Google Drive and return its contents as a string."""
+    async def download_file(self, file_id: str) -> bytes:
+        """Download a file from Google Drive."""
         try:
-            logger.debug(f"Downloading file with ID: {file_id}")
+            # Ensure token is valid before making the request
+            await self._ensure_valid_token()
             
-            # Get file metadata
-            file_metadata = self.service.files().get(fileId=file_id, fields='mimeType,name').execute()
-            mime_type = file_metadata.get('mimeType', '')
-            file_name = file_metadata.get('name', '')
-            
-            # Handle different file types
-            if 'google-apps' in mime_type:
-                # For Google Docs, Sheets, etc.
-                if 'document' in mime_type:
-                    return self.service.files().export(fileId=file_id, mimeType='text/plain').execute().decode('utf-8')
-                elif 'spreadsheet' in mime_type:
-                    return self.service.files().export(fileId=file_id, mimeType='text/csv').execute().decode('utf-8')
-            elif 'pdf' in mime_type.lower():
-                # For PDF files, return metadata and a message
-                return f"PDF file: {file_name}\nThis is a PDF file and cannot be read directly. Please use a PDF reader to view its contents."
-            else:
-                # For regular text files
+            def _download():
                 request = self.service.files().get_media(fileId=file_id)
                 file = io.BytesIO()
                 downloader = MediaIoBaseDownload(file, request)
@@ -89,48 +94,22 @@ class GoogleDriveService:
                 while done is False:
                     status, done = downloader.next_chunk()
                     logger.debug(f"Download {int(status.progress() * 100)}%")
-                
-                try:
-                    return file.getvalue().decode('utf-8')
-                except UnicodeDecodeError:
-                    return f"Binary file: {file_name}\nThis file contains binary data and cannot be read as text."
-                
+                return file.getvalue()
+            
+            content = await asyncio.to_thread(_download)
+            logger.debug(f"Successfully downloaded file {file_id}")
+            return content
+            
         except Exception as e:
             logger.error(f"Error downloading file: {str(e)}")
             raise
 
-    def get_file_by_name(self, name: str, folder_id: str = None) -> dict:
-        """Find a file by name in the specified folder or root."""
+    async def create_folder(self, name: str, parent_id: str = None) -> dict:
+        """Create a new folder in Google Drive with token refresh."""
         try:
-            query = f"name = '{name}'"
-            if folder_id:
-                query += f" and '{folder_id}' in parents"
+            # Ensure token is valid before making the request
+            await self._ensure_valid_token()
             
-            results = self.service.files().list(
-                q=query,
-                fields="files(id, name, mimeType)"
-            ).execute()
-            
-            files = results.get('files', [])
-            if files:
-                return files[0]
-            return None
-        except Exception as e:
-            logger.error(f"Error finding file: {str(e)}")
-            raise
-
-    def create_folder(self, name: str, parent_id: str = None) -> dict:
-        """
-        Create a new folder in Google Drive.
-        
-        Args:
-            name: The name of the folder to create
-            parent_id: The ID of the parent folder (defaults to the main authorized folder)
-            
-        Returns:
-            The created folder's metadata
-        """
-        try:
             # Use the main authorized folder if no parent_id is provided
             if not parent_id:
                 parent_id = self.settings.GOOGLE_DRIVE_FOLDER_ID
@@ -142,49 +121,86 @@ class GoogleDriveService:
                 'parents': [parent_id]
             }
             
-            # Create the folder
-            folder = self.service.files().create(
-                body=folder_metadata,
-                fields='id, name, parents'
-            ).execute()
+            def _create_folder():
+                folder = self.service.files().create(
+                    body=folder_metadata,
+                    fields='id, name, parents'
+                ).execute()
+                return folder
             
+            folder = await asyncio.to_thread(_create_folder)
             logger.debug(f"Created folder: {name} with ID: {folder.get('id')}")
             return folder
+            
         except Exception as e:
             logger.error(f"Error creating folder: {str(e)}")
             raise
 
-    def move_file(self, file_id: str, new_parent_id: str) -> dict:
-        """
-        Move a file to a new parent folder.
-        
-        Args:
-            file_id: The ID of the file to move
-            new_parent_id: The ID of the new parent folder
-            
-        Returns:
-            The updated file metadata
-        """
+    async def create_or_match_folder(self, name: str) -> dict:
+        """Create or match a folder with token refresh."""
         try:
-            # First, get the current parents of the file
-            file = self.service.files().get(
-                fileId=file_id,
-                fields='parents'
-            ).execute()
+            # Ensure token is valid before making the request
+            await self._ensure_valid_token()
             
-            previous_parents = ",".join(file.get('parents', []))
+            # First try to find an existing folder
+            query = f"name = '{name}' and mimeType = 'application/vnd.google-apps.folder' and '{self.settings.GOOGLE_DRIVE_FOLDER_ID}' in parents"
             
-            # Move the file to the new parent
-            file = self.service.files().update(
-                fileId=file_id,
-                addParents=new_parent_id,
-                removeParents=previous_parents,
-                fields='id, name, parents'
-            ).execute()
+            def _find_folder():
+                results = self.service.files().list(
+                    q=query,
+                    fields="files(id, name)"
+                ).execute()
+                files = results.get('files', [])
+                return files[0] if files else None
             
-            logger.debug(f"Moved file {file.get('name')} to folder {new_parent_id}")
-            return file
+            existing_folder = await asyncio.to_thread(_find_folder)
+            
+            if existing_folder:
+                logger.info(f"Found existing folder: {name}")
+                return {
+                    "folder_id": existing_folder['id'],
+                    "is_new": False
+                }
+            
+            # Create new folder if not found
+            folder = await self.create_folder(name)
+            logger.info(f"Created new folder: {name}")
+            return {
+                "folder_id": folder['id'],
+                "is_new": True
+            }
             
         except Exception as e:
-            logger.error(f"Error moving file: {str(e)}")
+            logger.error(f"Error creating or matching folder: {str(e)}")
+            raise
+
+    async def move_file_to_folder(self, file_id: str, folder_id: str) -> dict:
+        """Move a file to a specific folder with token refresh."""
+        try:
+            # Ensure token is valid before making the request
+            await self._ensure_valid_token()
+            
+            def _move_file():
+                # Get the current parents
+                file = self.service.files().get(
+                    fileId=file_id,
+                    fields='parents'
+                ).execute()
+                
+                # Remove from old parents and add to new parent
+                previous_parents = ",".join(file.get('parents', []))
+                file = self.service.files().update(
+                    fileId=file_id,
+                    addParents=folder_id,
+                    removeParents=previous_parents,
+                    fields='id, parents'
+                ).execute()
+                return file
+            
+            result = await asyncio.to_thread(_move_file)
+            logger.debug(f"Moved file {file_id} to folder {folder_id}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error moving file to folder: {str(e)}")
             raise 

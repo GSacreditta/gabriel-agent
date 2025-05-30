@@ -4,8 +4,267 @@ from typing import Dict, Any, List, Optional
 import logging
 from .vector_storage_service import VectorStorageService
 from .embedding_service import EmbeddingService
+from datetime import datetime
+from .ocr_service import OCRService
+from .google_drive import GoogleDriveService
+from .agent import Agent
+from .slack_service import SlackService
+import json
 
 logger = logging.getLogger(__name__)
+
+class DocumentProcessorService:
+    """Service for processing documents and managing the processing workflow."""
+    
+    def __init__(self):
+        """Initialize the document processor service."""
+        self.ocr_service: Optional[OCRService] = None
+        self.vector_service: Optional[VectorStorageService] = None
+        self.drive_service: Optional[GoogleDriveService] = None
+        self.agent: Optional[Agent] = None
+        self.slack_service: Optional[SlackService] = None
+        logger.info("Document Processor Service initialized")
+
+    async def initialize(
+        self,
+        ocr_service: OCRService,
+        vector_service: VectorStorageService,
+        drive_service: GoogleDriveService,
+        agent: Agent,
+        slack_service: SlackService
+    ):
+        """Initialize the service with required dependencies."""
+        self.ocr_service = ocr_service
+        self.vector_service = vector_service
+        self.drive_service = drive_service
+        self.agent = agent
+        self.slack_service = slack_service
+        logger.info("Document Processor Service initialized with dependencies")
+
+    async def process_document(self, file_id: str) -> Dict[str, Any]:
+        """
+        Process a document through the complete workflow.
+        
+        Args:
+            file_id (str): Google Drive file ID
+            
+        Returns:
+            Dict[str, Any]: Processing result
+        """
+        try:
+            logger.info(f"Starting document processing for file: {file_id}")
+            
+            # Validate dependencies
+            missing_services = []
+            if not self.ocr_service:
+                missing_services.append("OCR Service")
+            if not self.vector_service:
+                missing_services.append("Vector Storage Service")
+            if not self.drive_service:
+                missing_services.append("Drive Service")
+            if not self.agent:
+                missing_services.append("Agent")
+            
+            if missing_services:
+                error_msg = f"Required services not initialized: {', '.join(missing_services)}"
+                logger.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "missing_services": missing_services
+                }
+            
+            # Get file metadata
+            try:
+                file_metadata = await self.drive_service.get_file_metadata(file_id)
+                if not file_metadata:
+                    raise ValueError("No metadata returned for file")
+                
+                file_name = file_metadata.get('name', 'Unknown file')
+                mime_type = file_metadata.get('mimeType', '')
+                logger.info(f"Processing file: {file_name} (Type: {mime_type})")
+            except Exception as e:
+                error_msg = f"Failed to get file metadata: {str(e)}"
+                logger.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "file_id": file_id
+                }
+            
+            # Step 1: Handle file based on type
+            try:
+                if "google-apps" in mime_type:
+                    logger.info(f"Processing Google Workspace file: {file_name}")
+                    file_content = await self.drive_service.export_file(file_id, "application/pdf")
+                    logger.info("Successfully exported Google Workspace file to PDF")
+                else:
+                    logger.info(f"Processing regular file: {file_name}")
+                    file_content = await self.drive_service.download_file(file_id)
+                    logger.info("Successfully downloaded file")
+            except Exception as e:
+                error_msg = f"File processing failed: {str(e)}"
+                logger.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "file_id": file_id,
+                    "file_name": file_name,
+                    "mime_type": mime_type
+                }
+            
+            # Step 2: Process with OCR
+            logger.info("Processing document with OCR...")
+            try:
+                ocr_result = await self.ocr_service.process_document(file_id)
+                
+                if not ocr_result.get("success"):
+                    logger.error(f"OCR processing failed: {ocr_result.get('error')}")
+                    return {
+                        "success": False,
+                        "error": f"OCR processing failed: {ocr_result.get('error')}",
+                        "file_id": file_id
+                    }
+                
+                # Parse OCR result if needed
+                if isinstance(ocr_result, str):
+                    try:
+                        ocr_result = json.loads(ocr_result)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse OCR result: {str(e)}")
+                        return {
+                            "success": False,
+                            "error": f"Failed to parse OCR result: {str(e)}",
+                            "file_id": file_id
+                        }
+                
+                logger.info("OCR processing completed successfully")
+            except Exception as e:
+                logger.error(f"OCR processing failed with unexpected error: {str(e)}")
+                return {
+                    "success": False,
+                    "error": str(e),
+                    "file_id": file_id
+                }
+            
+            # Step 3: Extract structured information
+            extracted_text = ocr_result.get("data", {}).get("text", "")
+            logger.info(f"Extracted text length: {len(extracted_text)} characters")
+            
+            # Create document info matching test structure
+            document_info = {
+                "file_name": file_name,
+                "entity_name": ocr_result.get("data", {}).get("extracted_fields", {}).get("entity_name", "Unknown"),
+                "processing_time": datetime.utcnow().isoformat(),
+                "ocr_result": ocr_result,
+                "extracted_text": extracted_text,
+                "file_metadata": file_metadata,
+                "mime_type": mime_type,
+                "file_id": file_id
+            }
+            
+            # Validate required fields
+            if not document_info["entity_name"] or document_info["entity_name"] == "Unknown":
+                logger.warning("Entity name not found in document")
+            
+            # Step 4: Plan review tasks
+            try:
+                review_tasks = await self.agent.plan_review_tasks(document_info)
+                if not review_tasks:
+                    logger.warning("No review tasks generated")
+                    review_tasks = ["Error planning review tasks"]
+                logger.info(f"Generated {len(review_tasks)} review tasks")
+            except Exception as e:
+                error_msg = f"Failed to plan review tasks: {str(e)}"
+                logger.error(error_msg)
+                review_tasks = [f"Error: {error_msg}"]
+            
+            # Step 5: Create or match folder
+            try:
+                folder_result = await self.drive_service.create_or_match_folder(document_info["entity_name"])
+                if not folder_result or not folder_result.get("folder_id"):
+                    raise ValueError("Failed to create/match folder")
+                logger.info(f"Successfully created/matched folder for {document_info['entity_name']}")
+            except Exception as e:
+                error_msg = f"Folder operation failed: {str(e)}"
+                logger.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "file_id": file_id,
+                    "file_name": file_name,
+                    "entity_name": document_info["entity_name"]
+                }
+            
+            # Step 6: Move file to folder
+            try:
+                move_result = await self.drive_service.move_file_to_folder(
+                    file_id=file_id,
+                    folder_id=folder_result["folder_id"]
+                )
+                if not move_result.get("success"):
+                    raise ValueError("Failed to move file")
+                logger.info(f"Successfully moved file to folder")
+            except Exception as e:
+                error_msg = f"File move operation failed: {str(e)}"
+                logger.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "file_id": file_id,
+                    "file_name": file_name,
+                    "folder_id": folder_result["folder_id"]
+                }
+            
+            # Step 7: Store in vector database
+            try:
+                await self.vector_service.store_document(
+                    document_id=file_id,
+                    content=extracted_text,
+                    metadata=document_info
+                )
+                logger.info("Successfully stored document in vector database")
+            except Exception as e:
+                error_msg = f"Vector storage failed: {str(e)}"
+                logger.error(error_msg)
+                # Continue as this is not critical
+            
+            # Step 8: Send notification
+            if self.slack_service:
+                try:
+                    # Format message exactly as tested
+                    message = (
+                        f"*New Document Processed*\n\n"
+                        f"*Entity:* {document_info['entity_name']}\n"
+                        f"*Document:* {file_name}\n"
+                        f"*Date:* {document_info['processing_time']}\n"
+                        f"*Type:* {mime_type}\n\n"
+                        f"*Review Tasks:*\n" + "\n".join([f"• {task}" for task in review_tasks]) + "\n\n"
+                        f"*Drive Link:* https://drive.google.com/file/d/{file_id}"
+                    )
+                    
+                    await self.slack_service.send_review_request(message)
+                    logger.info("Successfully sent Slack notification")
+                except Exception as e:
+                    logger.error(f"Slack notification failed: {str(e)}")
+                    # Continue as this is not critical
+            
+            return {
+                "success": True,
+                "message": f"Successfully processed document: {file_name}",
+                "entity_name": document_info["entity_name"],
+                "review_tasks": review_tasks,
+                "document_info": document_info
+            }
+            
+        except Exception as e:
+            error_msg = f"Error processing document: {str(e)}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "error": error_msg,
+                "file_id": file_id
+            }
 
 class DocumentProcessor:
     """Service for processing and storing documents with vector search capabilities."""

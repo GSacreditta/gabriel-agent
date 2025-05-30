@@ -11,10 +11,7 @@ async def test_vector_storage():
     """Test the vector storage functionality."""
     try:
         # Initialize services
-        vector_store = VectorStorageService(
-            persist_directory="test_chroma_db",
-            collection_name="test_documents"
-        )
+        vector_store = VectorStorageService()
         embedding_service = EmbeddingService()
 
         # Test documents
@@ -40,10 +37,14 @@ async def test_vector_storage():
             metadata=[{"source": f"test_{i}"} for i in range(len(test_documents))]
         )
         logger.info(f"Add documents result: {add_result}")
+        if not add_result["success"]:
+            raise Exception(f"Failed to add documents: {add_result.get('error')}")
 
         # Get collection stats
         stats = vector_store.get_collection_stats()
         logger.info(f"Collection stats: {stats}")
+        if not stats["success"]:
+            raise Exception(f"Failed to get collection stats: {stats.get('error')}")
 
         # Test search
         query = "What is Python?"
@@ -56,16 +57,21 @@ async def test_vector_storage():
             top_k=2
         )
         logger.info(f"Search results for '{query}':")
-        for result in search_result["results"]:
-            logger.info(f"- Text: {result['text']}")
-            logger.info(f"  Score: {result['distance']}")
-            logger.info(f"  Metadata: {result['metadata']}")
+        if not search_result["success"]:
+            raise Exception(f"Failed to search documents: {search_result.get('error')}")
+            
+        for result in search_result.get("results", []):
+            logger.info(f"- Text: {result.get('text', 'N/A')}")
+            logger.info(f"  Score: {result.get('distance', 'N/A')}")
+            logger.info(f"  Metadata: {result.get('metadata', {})}")
 
         # Clean up test data
         delete_result = await vector_store.delete_documents(
             document_ids=[str(i) for i in range(len(test_documents))]
         )
         logger.info(f"Delete documents result: {delete_result}")
+        if not delete_result["success"]:
+            raise Exception(f"Failed to delete documents: {delete_result.get('error')}")
 
         return True
 

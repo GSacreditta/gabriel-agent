@@ -229,6 +229,50 @@ Gabriel Agent is an AI-powered personal assistant designed to manage structured 
 - Security updates
 - Performance optimizations
 - User feedback implementation 
+
+## File Discovery and Processing Flow
+
+### File Discovery Service
+The File Discovery Service is responsible for managing the initial processing of files found in the Google Drive Master folder. It acts as an intermediary between the folder scan and document processing.
+
+#### Responsibilities:
+1. **File Validation**
+   - Validates file types (PDF, images, Google Docs, spreadsheets)
+   - Ensures files are in a supported format
+   - Rejects unsupported file types
+
+2. **Processing State Management**
+   - Checks if files have been previously processed
+   - Maintains a First-In-First-Out (FIFO) processing queue
+   - Tracks file processing status
+
+3. **Queue Management**
+   - Implements synchronous processing (one file at a time)
+   - Maintains processing order based on discovery time
+   - Handles file processing state transitions
+
+### Document Processing History
+A database table will be implemented to store document processing history, including:
+- File ID and metadata
+- Processing timestamp
+- Processing status
+- Entity information
+- Processing results
+- Error logs (if any)
+
+### Processing Flow
+1. Scheduler triggers folder scan
+2. File Discovery Service:
+   - Validates discovered files
+   - Checks processing history
+   - Adds new files to processing queue
+3. Document Processor Service:
+   - Processes files in FIFO order
+   - One file at a time (synchronous)
+   - Updates processing history
+4. Entity Service handles organization
+5. Notification Service sends updates
+
 ### 5.4 Human-Device Interface (HDI) Flow
 1. **Review Request Process**
    - Agent sends review request to Slack

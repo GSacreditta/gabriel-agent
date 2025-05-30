@@ -70,11 +70,28 @@ class Agent:
             list: List of tasks that need human review
         """
         try:
+            # Validate required fields
+            required_fields = ['file_name', 'entity_name', 'processing_time', 'ocr_result']
+            missing_fields = [field for field in required_fields if field not in document_info]
+            if missing_fields:
+                logger.error(f"Missing required fields in document_info: {missing_fields}")
+                return ["Error: Missing required document information"]
+
+            # Extract information with validation
+            file_name = document_info.get('file_name', 'Unknown file')
+            entity_name = document_info.get('entity_name', 'Unknown entity')
+            processing_time = document_info.get('processing_time', 'Unknown time')
+            
+            # Get OCR results with validation
+            ocr_result = document_info.get('ocr_result', {})
+            confidence_scores = ocr_result.get('data', {}).get('confidence_scores', {})
+            
             # Prepare input for the agent
             input_text = f"""Based on the following document information, create a list of tasks that need human review:
-            Document Name: {document_info['file_name']}
-            Entity Name: {document_info['entity_name']}
-            Processing Time: {document_info['processing_time']}
+            Document Name: {file_name}
+            Entity Name: {entity_name}
+            Processing Time: {processing_time}
+            Confidence Scores: {confidence_scores}
             
             Please provide a list of specific tasks that require human review, such as:
             - Verifying extracted information
@@ -89,6 +106,14 @@ class Agent:
             # Parse the response into a list of tasks
             tasks = response.get("output", "").split("\n")
             tasks = [task.strip() for task in tasks if task.strip()]
+            
+            # Add default tasks if none were generated
+            if not tasks:
+                tasks = [
+                    f"Review entity name: {entity_name}",
+                    "Verify document classification",
+                    "Check extracted information accuracy"
+                ]
             
             return tasks
             

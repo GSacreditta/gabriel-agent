@@ -48,39 +48,48 @@ class DriveTool(BaseTool):
             # Handle different actions
             action = kwargs.get('action')
             if action == 'list_files':
+                # TODO: This method doesn't exist in GoogleDriveService
+                # Consider using get_folder_contents() instead
                 folder_id = kwargs.get('folder_id')
-                files = service.list_files(folder_id)
+                files = await service.get_folder_contents()  # Using get_folder_contents as fallback
                 return json.dumps(files, indent=2)
             elif action == 'get_folder_contents':
-                files = service.get_folder_contents()
+                files = await service.get_folder_contents()
                 return json.dumps(files, indent=2)
             elif action == 'download_file':
                 file_id = kwargs.get('file_id')
                 if not file_id:
                     raise ValueError("file_id is required for download_file action")
-                return service.download_file(file_id)
+                content = await service.download_file(file_id)
+                return content.decode('utf-8') if isinstance(content, bytes) else str(content)
             elif action == 'get_file_by_name':
+                # TODO: This method doesn't exist in GoogleDriveService
+                # Consider implementing it or using a different approach
                 file_name = kwargs.get('file_name')
                 if not file_name:
                     raise ValueError("file_name is required for get_file_by_name action")
                 folder_id = kwargs.get('folder_id')
-                file = service.get_file_by_name(file_name, folder_id)
-                return json.dumps(file, indent=2) if file else "File not found"
+                # For now, get all files and filter by name
+                files = await service.get_folder_contents()
+                matching_files = [f for f in files if f.get('name') == file_name]
+                return json.dumps(matching_files[0] if matching_files else None, indent=2)
             elif action == 'create_folder':
                 folder_name = kwargs.get('folder_name')
                 if not folder_name:
                     raise ValueError("folder_name is required for create_folder action")
                 parent_id = kwargs.get('folder_id')  # Optional parent folder ID
-                folder = service.create_folder(folder_name, parent_id)
+                folder = await service.create_folder(folder_name, parent_id)
                 return json.dumps(folder, indent=2)
             elif action == 'move_file':
+                # TODO: This method name doesn't match GoogleDriveService
+                # Consider renaming to move_file_to_folder to match the service
                 file_id = kwargs.get('file_id')
                 folder_id = kwargs.get('folder_id')
                 if not file_id:
                     raise ValueError("file_id is required for move_file action")
                 if not folder_id:
                     raise ValueError("folder_id is required for move_file action")
-                file = service.move_file(file_id, folder_id)
+                file = await service.move_file_to_folder(file_id, folder_id)  # Using correct method name
                 return json.dumps(file, indent=2)
             else:
                 raise ValueError(f"Unknown action: {action}")
