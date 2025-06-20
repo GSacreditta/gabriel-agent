@@ -12,6 +12,7 @@ from ..core.config import get_settings
 from ..tools.drive_tool import DriveTool
 from ..tools.sheets_tool import ReadSheetTool, WriteSheetTool, AppendSheetTool, CreateSheetTool
 from ..tools.ocr_tool import OCRTool
+import traceback
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -40,7 +41,41 @@ class Agent:
     def __init__(self):
         """Initialize the agent with necessary configurations."""
         self.settings = get_settings()
+        logger.info("Creating LangChain agent...")
         self.agent_executor = create_langchain_agent(include_ocr=True)
+        logger.info("LangChain agent created successfully")
+        
+    def process_message_sync(self, message: str) -> str:
+        """Process an incoming message synchronously.
+        
+        This method is used by the Slack socket mode handlers which run in a callback
+        and cannot use async/await.
+        
+        Args:
+            message (str): The incoming message to process
+            
+        Returns:
+            str: The generated response
+        """
+        try:
+            logger.info(f"Processing message synchronously: {message}")
+            
+            # Use the LangChain agent to process the message
+            response = self.agent_executor.invoke({"input": message})
+            
+            # Extract the response text
+            if isinstance(response, dict) and "output" in response:
+                return response["output"]
+            elif isinstance(response, str):
+                return response
+            else:
+                logger.warning(f"Unexpected response format: {type(response)}")
+                return str(response)
+                
+        except Exception as e:
+            logger.error(f"Error processing message: {str(e)}")
+            logger.error(f"Traceback: {''.join(traceback.format_exception(type(e), e, e.__traceback__))}")
+            return "I encountered an error while processing your message."
         
     async def process_message(self, message: str) -> str:
         """Process an incoming message and generate a response.
@@ -52,13 +87,24 @@ class Agent:
             str: The generated response
         """
         try:
+            logger.info(f"Processing message: {message}")
+            
             # Use the LangChain agent to process the message
             response = await self.agent_executor.ainvoke({"input": message})
-            return response.get("output", "I'm not sure how to respond to that.")
+            
+            # Extract the response text
+            if isinstance(response, dict) and "output" in response:
+                return response["output"]
+            elif isinstance(response, str):
+                return response
+            else:
+                logger.warning(f"Unexpected response format: {type(response)}")
+                return str(response)
             
         except Exception as e:
             logger.error(f"Error processing message: {str(e)}")
-            return "I encountered an error while processing your message. Please try again."
+            logger.error(f"Traceback: {''.join(traceback.format_exception(type(e), e, e.__traceback__))}")
+            return "I encountered an error while processing your message."
 
     async def plan_review_tasks(self, document_info: dict) -> list:
         """Plan tasks for human review based on document information.
@@ -121,6 +167,39 @@ class Agent:
             logger.error(f"Error planning review tasks: {str(e)}")
             return ["Error planning review tasks. Please check the logs."]
 
+    async def generate_summary(self, text: str, prompt: str) -> str:
+        """Generate a summary of the document text.
+        
+        Args:
+            text (str): The document text to summarize
+            prompt (str): Specific instructions for the summary
+            
+        Returns:
+            str: The generated summary
+        """
+        try:
+            # Prepare input for the agent
+            input_text = f"""Please summarize the following text according to these instructions:
+            {prompt}
+            
+            Text to summarize:
+            {text[:2000]}  # Limit text to first 2000 chars for summary
+            """
+            
+            # Get agent's response
+            response = await self.agent_executor.ainvoke({"input": input_text})
+            
+            # Extract and validate summary
+            summary = response.get("output", "").strip()
+            if not summary:
+                return "Summary generation failed"
+                
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Error generating summary: {str(e)}")
+            return "Summary generation failed"
+
 def create_langchain_agent(include_ocr: bool = True):
     """Create a LangChain agent with the specified tools."""
     tools = []
@@ -146,7 +225,7 @@ def create_langchain_agent(include_ocr: bool = True):
             llm=ChatOpenAI(
                 model_name="gpt-4-turbo-preview",
                 temperature=0,
-                streaming=True,
+                streaming=False,  # Disable streaming since we're not handling it
                 openai_api_key=get_settings().OPENAI_API_KEY
             ),
             tools=tools,
@@ -169,14 +248,21 @@ def create_langchain_agent(include_ocr: bool = True):
                 9. Move document  to "entity Sub-Folder" with processed document
                 10. Store processed document in Vector Database
             
-                Always provide clear, structured responses and use the available tools effectively."""),
+                Always provide clear, structured responses and use the available tools effectively.
+                
+                When responding to chat messages:
+                1. Be concise and direct
+                2. If you don't understand a request, ask for clarification
+                3. If you can't do something, explain why clearly
+                4. Use the tools at your disposal when needed"""),
                 ("human", "{input}"),
                 MessagesPlaceholder(variable_name="agent_scratchpad")
             ])
         ),
         tools=tools,
         verbose=True,
-        handle_parsing_errors=True
+        handle_parsing_errors=True,
+        max_iterations=3  # Limit iterations to prevent infinite loops
     )
 
 def create_agent() -> Agent:

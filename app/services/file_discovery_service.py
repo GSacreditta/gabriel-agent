@@ -16,6 +16,8 @@ class FileDiscoveryService:
         self.processing_queue: List[Dict[str, Any]] = []
         self.supported_mime_types = {
             'application/pdf': 'PDF',
+            'application/x-pdf': 'PDF',  # Alternative PDF MIME type
+            'binary/pdf': 'PDF',  # Another alternative PDF MIME type
             'image/jpeg': 'Image',
             'image/png': 'Image',
             'application/vnd.google-apps.document': 'Google Doc',
@@ -51,7 +53,8 @@ class FileDiscoveryService:
                 return {
                     "success": True,
                     "message": "No files found in folder",
-                    "files_processed": 0
+                    "files_processed": 0,
+                    "files": []
                 }
             
             # Log all found files
@@ -60,6 +63,7 @@ class FileDiscoveryService:
             
             # Process each file
             processed_count = 0
+            valid_files = []
             for file in files:
                 try:
                     logger.info(f"Processing file: {file['name']}")
@@ -79,6 +83,9 @@ class FileDiscoveryService:
                     if is_processed:
                         logger.info(f"File {file['name']} already processed, skipping")
                         continue
+                    
+                    # Add to valid files list
+                    valid_files.append(file)
                     
                     # Add to processing queue
                     self.processing_queue.append({
@@ -103,7 +110,8 @@ class FileDiscoveryService:
             return {
                 "success": True,
                 "message": f"Processed {processed_count} new files",
-                "files_processed": processed_count
+                "files_processed": processed_count,
+                "files": valid_files
             }
             
         except Exception as e:
@@ -111,7 +119,8 @@ class FileDiscoveryService:
             return {
                 "success": False,
                 "error": str(e),
-                "files_processed": 0
+                "files_processed": 0,
+                "files": []
             }
 
     async def _validate_file(self, file: Dict[str, Any]) -> Dict[str, Any]:
@@ -128,21 +137,35 @@ class FileDiscoveryService:
             # Get file metadata
             metadata = await self.drive_service.get_file_metadata(file['id'])
             mime_type = metadata.get('mimeType', '')
+            file_name = metadata.get('name', '')
             
+            logger.debug(f"Validating file {file_name} with MIME type: {mime_type}")
+
             # Check if file type is supported
-            if mime_type not in self.supported_mime_types:
+            if mime_type in self.supported_mime_types:
+                logger.info(f"File {file_name} validated with supported MIME type: {mime_type}")
                 return {
-                    "is_valid": False,
-                    "reason": f"Unsupported file type: {mime_type}"
+                    "is_valid": True,
+                    "file_type": self.supported_mime_types[mime_type]
                 }
-            
+
+            # Fallback: check file extension for PDF
+            if file_name.lower().endswith('.pdf'):
+                logger.info(f"File {file_name} accepted by .pdf extension despite MIME type: {mime_type}")
+                return {
+                    "is_valid": True,
+                    "file_type": "PDF",
+                    "reason": f"Accepted by .pdf extension despite MIME type: {mime_type}"
+                }
+
+            logger.warning(f"File {file_name} rejected - unsupported MIME type: {mime_type}")
             return {
-                "is_valid": True,
-                "file_type": self.supported_mime_types[mime_type]
+                "is_valid": False,
+                "reason": f"Unsupported file type: {mime_type}"
             }
-            
+        
         except Exception as e:
-            logger.error(f"Error validating file: {str(e)}")
+            logger.error(f"Error validating file {file.get('name', 'unknown')}: {str(e)}")
             return {
                 "is_valid": False,
                 "reason": f"Validation error: {str(e)}"

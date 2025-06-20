@@ -7,6 +7,9 @@ import io
 import os
 import asyncio
 from datetime import datetime, timedelta
+from pathlib import Path
+import tempfile
+from typing import Optional, Dict, Any
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -23,6 +26,10 @@ class GoogleDriveService:
                 scopes=['https://www.googleapis.com/auth/drive']
             )
             
+            # Log service account details
+            logger.info(f"Service Account Email: {self.credentials.service_account_email}")
+            logger.info(f"Project ID: {self.credentials.project_id}")
+            
             # Set token expiry to 55 minutes (5 minutes before the 60-minute limit)
             self.credentials.expiry = datetime.utcnow() + timedelta(minutes=55)
             
@@ -38,6 +45,18 @@ class GoogleDriveService:
         except Exception as e:
             logger.error(f"Error initializing GoogleDriveService: {str(e)}")
             raise
+
+    async def cleanup(self):
+        """Cleanup the service resources."""
+        try:
+            if hasattr(self, 'service') and self.service:
+                # Close the service client
+                if hasattr(self.service, '_http'):
+                    self.service._http.close()
+                self.service = None
+            logger.info("Google Drive Service cleaned up successfully")
+        except Exception as e:
+            logger.warning(f"Error during Google Drive Service cleanup: {str(e)}")
 
     async def _ensure_valid_token(self):
         """Ensure the token is valid and refresh if necessary."""
@@ -65,19 +84,46 @@ class GoogleDriveService:
             # Ensure token is valid before making the request
             await self._ensure_valid_token()
             
+            logger.info("=== Google Drive API Call Details ===")
+            logger.info(f"Service Account File: {self.settings.get_google_credentials_path()}")
+            logger.info(f"Service Account Email: {self.credentials.service_account_email}")
+            logger.info(f"Project ID: {self.credentials.project_id}")
+            logger.info(f"Folder ID: {self.settings.GOOGLE_DRIVE_FOLDER_ID}")
+            
             def _list_files():
-                results = self.service.files().list(
-                    q=f"'{self.settings.GOOGLE_DRIVE_FOLDER_ID}' in parents",
-                    fields="files(id, name, mimeType, createdTime, modifiedTime)"
-                ).execute()
-                return results.get('files', [])
+                # Log the exact API call parameters
+                params = {
+                    'q': f"'{self.settings.GOOGLE_DRIVE_FOLDER_ID}' in parents and trashed = false",
+                    'spaces': 'drive',
+                    'fields': 'nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, size, webViewLink)',
+                    'orderBy': 'modifiedTime desc',
+                    'pageSize': 100
+                }
+                logger.info(f"API Call Parameters: {params}")
+                
+                results = self.service.files().list(**params).execute()
+                
+                files = results.get('files', [])
+                logger.info(f"API Response: {results}")
+                return files
             
             files = await asyncio.to_thread(_list_files)
-            logger.debug(f"Found {len(files)} files in folder")
+            logger.info(f"Found {len(files)} files in master folder {self.settings.GOOGLE_DRIVE_FOLDER_ID}")
+            
+            if not files:
+                logger.warning(f"No files found in folder {self.settings.GOOGLE_DRIVE_FOLDER_ID}. This could mean:")
+                logger.warning("1. The folder is empty")
+                logger.warning("2. The folder ID is incorrect")
+                logger.warning("3. The service account doesn't have access to the folder")
+            else:
+                for file in files:
+                    logger.info(f"File in master folder: {file['name']} (ID: {file['id']}, Type: {file.get('mimeType', 'unknown')})")
+            
             return files
             
         except Exception as e:
             logger.error(f"Error getting folder contents: {str(e)}")
+            logger.error(f"Full error details: {type(e).__name__}: {str(e)}")
             raise
 
     async def download_file(self, file_id: str) -> bytes:
@@ -203,4 +249,129 @@ class GoogleDriveService:
             
         except Exception as e:
             logger.error(f"Error moving file to folder: {str(e)}")
+            raise
+
+    async def get_file_metadata(self, file_id: str) -> Dict[str, Any]:
+        """Get file metadata.
+        
+        Args:
+            file_id: File ID
+            
+        Returns:
+            Dict containing file metadata
+        """
+        try:
+            # Ensure token is valid before making the request
+            await self._ensure_valid_token()
+            
+            def _get_metadata():
+                return self.service.files().get(
+                    fileId=file_id,
+                    fields='id, name, mimeType, size, createdTime, modifiedTime'
+                ).execute()
+            
+            metadata = await asyncio.to_thread(_get_metadata)
+            logger.debug(f"Got metadata for file {file_id}: {metadata}")
+            return metadata
+            
+        except Exception as e:
+            logger.error(f"Error getting file metadata: {str(e)}")
+            raise
+
+    async def export_file(self, file_id: str, mime_type: str) -> bytes:
+        """Export a Google Workspace file to a different format."""
+        try:
+            # Ensure token is valid before making the request
+            await self._ensure_valid_token()
+            
+            def _export():
+                request = self.service.files().export_media(
+                    fileId=file_id,
+                    mimeType=mime_type
+                )
+                file = io.BytesIO()
+                downloader = MediaIoBaseDownload(file, request)
+                done = False
+                while done is False:
+                    status, done = downloader.next_chunk()
+                    logger.debug(f"Export {int(status.progress() * 100)}%")
+                return file.getvalue()
+            
+            content = await asyncio.to_thread(_export)
+            logger.debug(f"Successfully exported file {file_id} to {mime_type}")
+            return content
+            
+        except Exception as e:
+            logger.error(f"Error exporting file: {str(e)}")
+            raise
+
+    async def get_specific_folder_contents(self, folder_id: str):
+        """Get contents of a specific folder with token refresh."""
+        try:
+            # Ensure token is valid before making the request
+            await self._ensure_valid_token()
+            
+            def _list_files():
+                params = {
+                    'q': f"'{folder_id}' in parents and trashed = false",
+                    'spaces': 'drive',
+                    'fields': 'nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, size, webViewLink)',
+                    'orderBy': 'modifiedTime desc',
+                    'pageSize': 100
+                }
+                
+                results = self.service.files().list(**params).execute()
+                files = results.get('files', [])
+                return files
+            
+            files = await asyncio.to_thread(_list_files)
+            logger.info(f"Found {len(files)} files in folder {folder_id}")
+            
+            for file in files:
+                logger.info(f"File in folder: {file['name']} (ID: {file['id']}, Type: {file.get('mimeType', 'unknown')})")
+            
+            return files
+            
+        except Exception as e:
+            logger.error(f"Error getting folder contents: {str(e)}")
+            raise
+
+    async def move_file_to_master_folder(self, file_id: str) -> dict:
+        """Move a file back to the master folder."""
+        try:
+            return await self.move_file_to_folder(file_id, self.settings.GOOGLE_DRIVE_FOLDER_ID)
+        except Exception as e:
+            logger.error(f"Error moving file to master folder: {str(e)}")
+            raise
+
+    async def download_file_to_temp(self, file_id: str) -> Optional[str]:
+        """Download a file to a temporary location.
+        
+        Args:
+            file_id: File ID
+            
+        Returns:
+            Path to downloaded file
+        """
+        try:
+            # Create temp directory if needed
+            temp_dir = Path("temp")
+            temp_dir.mkdir(exist_ok=True)
+            
+            # Download file
+            content = await self.download_file(file_id)
+            
+            # Get file metadata for name
+            metadata = await self.get_file_metadata(file_id)
+            file_name = metadata.get("name", f"file_{file_id}")
+            
+            # Save to temp file
+            temp_path = temp_dir / file_name
+            temp_path.write_bytes(content)
+            
+            logger.info(f"Downloaded file to: {temp_path}")
+            return str(temp_path)
+            
+        except Exception as e:
+            logger.error(f"Error downloading file to temp: {str(e)}")
             raise 

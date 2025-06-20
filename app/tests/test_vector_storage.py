@@ -1,7 +1,7 @@
 import asyncio
 import logging
-from ..services.vector_storage_service import VectorStorageService
-from ..services.embedding_service import EmbeddingService
+from app.services.vector_storage_service import VectorStorageService
+from app.services.embedding_service import EmbeddingService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -11,7 +11,11 @@ async def test_vector_storage():
     """Test the vector storage functionality."""
     try:
         # Initialize services
-        vector_store = VectorStorageService()
+        vector_store = VectorStorageService(
+            persist_directory="test_documents",
+            collection_name="test_collection",
+            use_temp_dir=True
+        )
         embedding_service = EmbeddingService()
 
         # Test documents

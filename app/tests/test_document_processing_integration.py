@@ -8,6 +8,10 @@ from ..services.ocr_service import OCRService
 from ..services.vector_storage_service import VectorStorageService
 from ..services.slack_service import SlackService
 from ..services.scheduler_service import SchedulerService
+from ..services.file_discovery_service import FileDiscoveryService
+from ..tools.ocr_tool import OCRTool
+from ..tools.drive_tool import DriveTool
+from ..core.config import get_settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -18,43 +22,83 @@ async def test_document_processing_integration():
     try:
         logger.info("Starting comprehensive document processing test")
         
-        # Initialize all required services
-        logger.info("Initializing services...")
+        # Get settings
+        settings = get_settings()
+        
+        # Initialize tools and services
+        logger.info("Initializing tools and services...")
         drive_service = GoogleDriveService()
-        ocr_service = OCRService()
         vector_service = VectorStorageService()
         slack_service = SlackService()
-        agent = Agent()
+        
+        # Initialize tools with services
+        drive_tool = DriveTool()
+        ocr_tool = OCRTool()
+        agent = Agent()  # This will initialize with the tools
         
         # Initialize document processor with all services
         processor = DocumentProcessorService()
         await processor.initialize(
-            ocr_service=ocr_service,
+            ocr_service=ocr_tool._ocr_service,  # Use the OCR service from the tool
             vector_service=vector_service,
             drive_service=drive_service,
             agent=agent,
             slack_service=slack_service
         )
         
+        # Initialize file discovery service
+        file_discovery = FileDiscoveryService()
+        await file_discovery.initialize(
+            drive_service=drive_service,
+            document_processor=processor
+        )
+        
         # Initialize scheduler
         scheduler = SchedulerService()
-        await scheduler.initialize(processor)
+        await scheduler.initialize(
+            agent=agent,
+            slack_service=slack_service,
+            file_discovery=file_discovery
+        )
         
-        # Test file ID from previous successful test
-        test_file_id = "1i23QVF3CIbvG1XfhbpVOYhAW5V-WJwYz"
+        # Step 1: Use FileDiscoveryService to find available documents
+        logger.info("Finding available documents using FileDiscoveryService...")
+        scan_result = await file_discovery.scan_folder()
         
-        # Step 1: Test direct document processing
-        logger.info("Testing direct document processing...")
+        if not scan_result["success"]:
+            raise Exception(f"Document scan failed: {scan_result.get('error')}")
+            
+        if scan_result["files_processed"] == 0:
+            raise Exception("No documents found in the folder")
+            
+        # Get the first available document for testing
+        test_file = scan_result.get("files", [])[0]
+        test_file_id = test_file.get("id")
+        logger.info(f"Found test file: {test_file.get('name')} (ID: {test_file_id})")
+        
+        # Step 2: Process document with OCR tool
+        logger.info("Processing document with OCR...")
+        ocr_result = await ocr_tool._arun(
+            file_id=test_file_id,
+            extract_structured=True
+        )
+        
+        if not ocr_result.get("success"):
+            raise Exception(f"OCR processing failed: {ocr_result.get('error')}")
+        
+        logger.info("OCR processing successful")
+        
+        # Step 3: Process document through processor
+        logger.info("Processing document through processor...")
         result = await processor.process_document(test_file_id)
         
         if not result["success"]:
             raise Exception(f"Document processing failed: {result.get('error')}")
         
-        logger.info("Direct document processing successful")
+        logger.info("Document processing successful")
         
-        # Step 2: Test vector database storage
+        # Step 4: Test vector database storage
         logger.info("Verifying vector database storage...")
-        # Search for the document in vector database
         search_result = await vector_service.search_similar(
             query=result["document_info"]["entity_name"],
             top_k=1
@@ -65,10 +109,8 @@ async def test_document_processing_integration():
         
         logger.info("Vector database storage verified")
         
-        # Step 3: Test scheduler
+        # Step 5: Test scheduler
         logger.info("Testing scheduler...")
-        
-        # Schedule a document check
         check_time = datetime.utcnow() + timedelta(minutes=1)
         await scheduler.schedule_document_check(check_time)
         
@@ -83,7 +125,7 @@ async def test_document_processing_integration():
         
         logger.info("Scheduler test completed")
         
-        # Step 4: Verify document was moved to correct folder
+        # Step 6: Verify document was moved to correct folder
         logger.info("Verifying document location...")
         file_metadata = await drive_service.get_file_metadata(test_file_id)
         if not file_metadata.get("parents"):
@@ -91,10 +133,9 @@ async def test_document_processing_integration():
         
         logger.info(f"Document moved to folder: {file_metadata['parents'][0]}")
         
-        # Step 5: Clean up test data
+        # Step 7: Clean up test data
         logger.info("Cleaning up test data...")
         try:
-            # Remove document from vector database
             await vector_service.delete_document(test_file_id)
             logger.info("Test data cleaned up successfully")
         except Exception as e:
@@ -117,4 +158,9 @@ async def test_document_processing_integration():
         }
 
 if __name__ == "__main__":
-    asyncio.run(test_document_processing_integration()) 
+    # Run the test
+    result = asyncio.run(test_document_processing_integration())
+    if result["success"]:
+        logger.info("All tests passed successfully!")
+    else:
+        logger.error(f"Tests failed: {result.get('error')}") 

@@ -1,7 +1,7 @@
 import asyncio
 import logging
-from ..services.vector_storage_service import VectorStorageService
-from ..services.embedding_service import EmbeddingService
+from app.services.vector_storage_service import VectorStorageService
+from app.services.embedding_service import EmbeddingService
 
 # Configure logging
 logging.basicConfig(

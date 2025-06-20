@@ -3,7 +3,7 @@ from functools import lru_cache
 import os
 from pathlib import Path
 import logging
-from typing import Optional
+from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -29,43 +29,60 @@ class Settings(BaseSettings):
     SLACK_BOT_TOKEN: Optional[str] = None
     SLACK_SIGNING_SECRET: Optional[str] = None
     SLACK_APP_TOKEN: Optional[str] = None
-    SLACK_DEFAULT_CHANNEL: Optional[str] = None
+    SLACK_DEFAULT_CHANNEL: str = "general"
     
     # Ngrok settings
     NGROK_AUTH_TOKEN: Optional[str] = None
     NGROK_DOMAIN: Optional[str] = None
     PUBLIC_URL: Optional[str] = None 
     
+    # Scheduler settings
+    SCHEDULER_SCAN_INTERVAL: int = 300  # 5 minutes in seconds
+    
+    # Directory settings
+    TEMP_DIR: str = "temp"  # Default temporary directory
+
+    # ChromaDB settings
+    CHROMA_DB_HOST: str = "localhost"
+    CHROMA_DB_PORT: str = "8000"
+    CHROMA_PERSIST_DIRECTORY: str = "chroma_persist"
+    CHROMA_DB_PATH: str = "chroma_db"
+
+    # File processing settings
+    MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB in bytes
+    ALLOWED_FILE_TYPES: str = "pdf,docx,txt"
+    FILE_PROCESSING_TIMEOUT: int = 300
+    BATCH_SIZE: int = 10
+
+    # Monitoring settings
+    ENABLE_TELEMETRY: bool = False
+    METRICS_PORT: int = 9090
+    HEALTH_CHECK_INTERVAL: int = 60
+
+    # Cache settings
+    CACHE_TTL: int = 3600
+    CACHE_MAX_SIZE: int = 1000
+    ENABLE_RESPONSE_CACHE: bool = True
+
+    # Rate limiting settings
+    RATE_LIMIT_REQUESTS: int = 100
+    RATE_LIMIT_WINDOW: int = 60
+    RATE_LIMIT_STRATEGY: str = "fixed-window"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
 
-    def get_google_credentials_path(self) -> Path:
-        """Get the absolute path to the Google credentials file."""
-        try:
-            # First try to use the environment variable if set
-            if self.GOOGLE_APPLICATION_CREDENTIALS:
-                creds_path = Path(self.GOOGLE_APPLICATION_CREDENTIALS)
-                if creds_path.is_file() and creds_path.exists():
-                    return creds_path
-                else:
-                    logger.warning(f"Credentials file not found at {creds_path}, falling back to default location")
-            
-            # Fallback to default location
-            base_dir = Path(__file__).resolve().parent.parent.parent
-            creds_path = base_dir / "config" / "credentials" / "location-19291-fb284eccae8d.json"
-            
-            if not creds_path.exists():
-                raise FileNotFoundError(f"Google credentials file not found at {creds_path}")
-            
-            # Verify we can read the file
-            if not os.access(creds_path, os.R_OK):
-                raise PermissionError(f"No read permission for credentials file at {creds_path}")
-                
-            return creds_path
-        except Exception as e:
-            logger.error(f"Error accessing Google credentials: {str(e)}")
-            raise
+    def get_google_credentials_path(self) -> str:
+        """Get the path to Google credentials file."""
+        if not self.GOOGLE_APPLICATION_CREDENTIALS:
+            raise ValueError("GOOGLE_APPLICATION_CREDENTIALS not set")
+        return self.GOOGLE_APPLICATION_CREDENTIALS
+        
+    @property
+    def allowed_file_types_list(self) -> List[str]:
+        """Get allowed file types as a list."""
+        return [ft.strip() for ft in self.ALLOWED_FILE_TYPES.split(",")]
 
 @lru_cache()
 def get_settings():

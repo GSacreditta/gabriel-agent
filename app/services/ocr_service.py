@@ -80,13 +80,24 @@ class OCRService:
         try:
             logger.debug(f"Starting OCR text extraction for file: {file_id}")
             
+            # Get file metadata to determine the MIME type
+            from .google_drive import GoogleDriveService
+            drive_service = GoogleDriveService()
+            file_metadata = await drive_service.get_file_metadata(file_id)
+            mime_type = file_metadata.get('mimeType', '')
+            file_name = file_metadata.get('name', 'unknown')
+            
+            logger.info(f"Processing file: {file_name} (MIME type: {mime_type})")
+            
             # Get file content from Google Drive
             file_content = await self._get_file_content(file_id)
             
-            # Check if file is a PDF
-            if file_id.lower().endswith('.pdf'):
+            # Check if file is a PDF based on MIME type
+            if mime_type == 'application/pdf':
+                logger.info(f"Detected PDF file: {file_name}, using PDF processing")
                 return await self._process_pdf(file_content, file_id)
             else:
+                logger.info(f"Detected image/other file: {file_name}, using image processing")
                 return await self._process_image(file_content, file_id)
                 
         except Exception as e:
@@ -98,7 +109,7 @@ class OCRService:
             }
 
     async def _process_pdf(self, file_content: bytes, file_id: str) -> Dict[str, Any]:
-        """Process PDF file for OCR."""
+        """Process PDF file - try direct text extraction first, then OCR if needed."""
         try:
             # Create a temporary file for the PDF
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
@@ -111,8 +122,44 @@ class OCRService:
                 total_pages = len(doc)
                 logger.debug(f"Processing PDF with {total_pages} pages")
                 
+                # FIRST: Try direct text extraction (for text-based PDFs)
                 all_text = []
+                text_found = False
+                
                 for page_num in range(total_pages):
+                    try:
+                        page = doc[page_num]
+                        # Extract text directly from PDF
+                        page_text = page.get_text()
+                        
+                        if page_text.strip():
+                            all_text.append(page_text.strip())
+                            text_found = True
+                            logger.debug(f"Successfully extracted text directly from page {page_num + 1}")
+                        else:
+                            logger.debug(f"No direct text found on page {page_num + 1}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error extracting text from page {page_num + 1}: {str(e)}")
+                        continue
+                
+                # If we found text via direct extraction, return it
+                if text_found and all_text:
+                    combined_text = "\n\n".join(all_text)
+                    logger.info(f"Successfully extracted {len(combined_text)} characters of text directly from PDF")
+                    return {
+                        "success": True,
+                        "text": combined_text,
+                        "file_id": file_id,
+                        "is_scanned": False,  # This is a text-based PDF
+                        "extraction_method": "direct_text"
+                    }
+                
+                # SECOND: If no text found, try OCR (for scanned/image-based PDFs)
+                logger.info("No direct text found in PDF, attempting OCR on page images...")
+                
+                ocr_text = []
+                for page_num in range(min(total_pages, 5)):  # Limit to first 5 pages for OCR
                     try:
                         # Convert page to image
                         page = doc[page_num]
@@ -131,34 +178,37 @@ class OCRService:
                         response = self.client.text_detection(image=image)
                         
                         if response.error.message:
-                            logger.error(f"Error in Vision API: {response.error.message}")
+                            logger.warning(f"Vision API error on page {page_num + 1}: {response.error.message}")
                             continue
                         
                         if response.text_annotations:
                             page_text = response.text_annotations[0].description
                             if page_text.strip():
-                                all_text.append(page_text)
-                                logger.debug(f"Successfully extracted text from page {page_num + 1}")
+                                ocr_text.append(page_text)
+                                logger.debug(f"Successfully extracted text via OCR from page {page_num + 1}")
                             else:
-                                logger.warning(f"No text found on page {page_num + 1}")
+                                logger.warning(f"No text found via OCR on page {page_num + 1}")
                         else:
-                            logger.warning(f"No text annotations found on page {page_num + 1}")
+                            logger.warning(f"No text annotations found via OCR on page {page_num + 1}")
                             
                     except Exception as e:
-                        logger.error(f"Error processing page {page_num + 1}: {str(e)}")
+                        logger.error(f"Error performing OCR on page {page_num + 1}: {str(e)}")
                         continue
                 
-                if all_text:
+                if ocr_text:
+                    combined_ocr_text = "\n\n".join(ocr_text)
+                    logger.info(f"Successfully extracted {len(combined_ocr_text)} characters via OCR")
                     return {
                         "success": True,
-                        "text": "\n\n".join(all_text),
+                        "text": combined_ocr_text,
                         "file_id": file_id,
-                        "is_scanned": True
+                        "is_scanned": True,  # This is a scanned/image-based PDF
+                        "extraction_method": "ocr"
                     }
                 else:
                     return {
                         "success": False,
-                        "error": "No text could be extracted from the PDF",
+                        "error": "No text could be extracted from the PDF using either direct extraction or OCR",
                         "file_id": file_id,
                         "is_scanned": True
                     }
