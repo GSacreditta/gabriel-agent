@@ -9,16 +9,58 @@ from .ocr_service import OCRService
 from .google_drive import GoogleDriveService
 from .agent import Agent
 from .slack_service import SlackService
+from .pdf_service import PDFService
 import json
+import os
+import tempfile
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class WorkflowState:
+    # Core identifiers
+    workflow_id: str
+    source_type: str  # "file" or "email"
+    source_id: str    # file_id or email_id
+    
+    # Email-specific fields
+    email_content: Optional[Dict[str, Any]] = None
+    email_attachments: Optional[List[Dict[str, Any]]] = None
+    attachment_processing_results: Optional[List[Dict[str, Any]]] = None
+    
+    # File processing (existing)
+    file_id: Optional[str] = None
+    file_metadata: Optional[Dict[str, Any]] = None
+    
+    # Combined content analysis
+    combined_text: Optional[str] = None
+    content_analysis: Optional[Dict[str, Any]] = None
+    
+    # Entity matching
+    matched_entities: Optional[List[Dict[str, Any]]] = None
+    suggested_new_entities: Optional[List[Dict[str, Any]]] = None
+    
+    # Proposed database records
+    proposed_tasks: Optional[List[Dict[str, Any]]] = None
+    proposed_obligations: Optional[List[Dict[str, Any]]] = None
+    proposed_authorizations: Optional[List[Dict[str, Any]]] = None
+    
+    # Human review results
+    approved_entities: Optional[List[Dict[str, Any]]] = None
+    approved_tasks: Optional[List[Dict[str, Any]]] = None
+    human_corrections: Optional[Dict[str, Any]] = None
+    
+    # Database operations
+    created_records: Optional[Dict[str, List[str]]] = None
+
 class DocumentProcessorService:
-    """Service for processing documents and managing the processing workflow."""
+    """Service for processing documents and managing the workflow."""
     
     def __init__(self):
         """Initialize the document processor service."""
         self.ocr_service: Optional[OCRService] = None
+        self.pdf_service: Optional[PDFService] = None
         self.vector_service: Optional[VectorStorageService] = None
         self.drive_service: Optional[GoogleDriveService] = None
         self.agent: Optional[Agent] = None
@@ -28,6 +70,7 @@ class DocumentProcessorService:
     async def initialize(
         self,
         ocr_service: OCRService,
+        pdf_service: PDFService,
         vector_service: VectorStorageService,
         drive_service: GoogleDriveService,
         agent: Agent,
@@ -35,11 +78,178 @@ class DocumentProcessorService:
     ):
         """Initialize the service with required dependencies."""
         self.ocr_service = ocr_service
+        self.pdf_service = pdf_service
         self.vector_service = vector_service
         self.drive_service = drive_service
         self.agent = agent
         self.slack_service = slack_service
-        logger.info("Document Processor Service initialized with dependencies")
+        logger.info("Document Processor Service initialized with all dependencies")
+
+    async def process_document(self, file_id: str) -> Dict[str, Any]:
+        """Process a document through the workflow.
+        
+        Simple workflow:
+        1. Download and extract text
+        2. Send for review
+        3. Store result if approved
+        """
+        temp_file_path = None
+        try:
+            # Get file metadata
+            file_metadata = await self.drive_service.get_file_metadata(file_id)
+            if not file_metadata:
+                raise ValueError(f"Could not get metadata for file: {file_id}")
+
+            file_name = file_metadata["name"]
+            mime_type = file_metadata["mimeType"]
+            logger.info(f"Processing {file_name} (Type: {mime_type})")
+
+            # Download file
+            temp_file_path = await self.drive_service.download_file_to_temp(file_id)
+            if not temp_file_path:
+                raise ValueError(f"Could not download file: {file_id}")
+
+            # Extract text based on file type
+            extracted_text = None
+            extraction_method = None
+
+            if mime_type == "application/pdf":
+                # Try PDF service first
+                pdf_result = await self.pdf_service.extract_text(temp_file_path)
+                if pdf_result["success"]:
+                    extracted_text = pdf_result["text"]
+                    extraction_method = f"pdf_{pdf_result.get('parser_used', 'unknown')}"
+
+            # Fallback to OCR if needed
+            if not extracted_text:
+                ocr_result = await self.ocr_service.process_document(
+                    file_path=temp_file_path,
+                    mime_type=mime_type
+                )
+                if not ocr_result["success"]:
+                    raise ValueError(f"Text extraction failed: {ocr_result.get('error')}")
+                
+                extracted_text = ocr_result["text"]
+                extraction_method = "ocr"
+
+            # Prepare document info
+            document_info = {
+                "file_id": file_id,
+                "file_name": file_name,
+                "text": extracted_text,
+                "extraction_method": extraction_method,
+                "processed_at": datetime.now().isoformat()
+            }
+
+            # Add status to document_info
+            document_info["status"] = "pending_approval"
+            
+            return {
+                "success": True,
+                "document_info": document_info
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing document: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+        finally:
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                    logger.debug(f"Cleaned up temporary file: {temp_file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup temp file: {str(e)}")
+
+    async def _send_for_review(self, document_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Send document for review via Slack."""
+        try:
+            # Create a simple message with document preview
+            preview = document_info["text"][:500] + "..." if len(document_info["text"]) > 500 else document_info["text"]
+            message = (
+                f"*New Document for Review*\n"
+                f"*File:* {document_info['file_name']}\n"
+                f"*Extraction:* {document_info['extraction_method']}\n\n"
+                f"*Preview:*\n```{preview}```"
+            )
+
+            # Send to Slack with approve/reject buttons
+            result = await self.slack_service.send_message(
+                text=message,
+                blocks=[
+                    {"type": "section", "text": {"type": "mrkdwn", "text": message}},
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Approve"},
+                                "style": "primary",
+                                "value": f"approve_{document_info['file_id']}"
+                            },
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "Reject"},
+                                "style": "danger",
+                                "value": f"reject_{document_info['file_id']}"
+                            }
+                        ]
+                    }
+                ]
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error sending for review: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    async def handle_approval(
+        self,
+        file_id: str,
+        approved: bool,
+        approver: str,
+        comments: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Handle the approval/rejection of a document."""
+        try:
+            if approved:
+                # Store the approved document
+                await self.vector_service.store_document(
+                    file_id=file_id,
+                    metadata={
+                        "status": "approved",
+                        "approver": approver,
+                        "approved_at": datetime.now().isoformat(),
+                        "comments": comments
+                    }
+                )
+                
+                logger.info(f"Document {file_id} approved by {approver}")
+                return {
+                    "success": True,
+                    "status": "approved",
+                    "approver": approver
+                }
+            else:
+                logger.info(f"Document {file_id} rejected by {approver}")
+                return {
+                    "success": True,
+                    "status": "rejected",
+                    "approver": approver
+                }
+
+        except Exception as e:
+            logger.error(f"Error handling approval: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
     async def _extract_tasks(self, text: str, extracted_fields: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -317,210 +527,6 @@ class DocumentProcessorService:
         # No clear task found
         return None
 
-    async def process_document(self, file_id: str) -> Dict[str, Any]:
-        """
-        Process a document through the complete workflow.
-        IMPORTANT: NO files are moved until human approval is received via Slack.
-        
-        Args:
-            file_id (str): Google Drive file ID
-            
-        Returns:
-            Dict[str, Any]: Processing result with extracted data for human review
-        """
-        try:
-            logger.info(f"Starting document processing for file: {file_id}")
-            
-            # Validate dependencies
-            missing_services = []
-            if not self.ocr_service:
-                missing_services.append("OCR Service")
-            if not self.vector_service:
-                missing_services.append("Vector Storage Service")
-            if not self.drive_service:
-                missing_services.append("Drive Service")
-            if not self.agent:
-                missing_services.append("Agent")
-            
-            if missing_services:
-                error_msg = f"Required services not initialized: {', '.join(missing_services)}"
-                logger.error(error_msg)
-                return {
-                    "success": False,
-                    "error": error_msg,
-                    "missing_services": missing_services
-                }
-            
-            # STEP 1: Get file metadata
-            try:
-                file_metadata = await self.drive_service.get_file_metadata(file_id)
-                if not file_metadata:
-                    raise ValueError("No metadata returned for file")
-                
-                file_name = file_metadata.get('name', 'Unknown file')
-                mime_type = file_metadata.get('mimeType', '')
-                logger.info(f"STEP 1 - File Metadata: {file_name} (Type: {mime_type})")
-            except Exception as e:
-                error_msg = f"STEP 1 FAILED - File metadata: {str(e)}"
-                logger.error(error_msg)
-                return {
-                    "success": False,
-                    "error": error_msg,
-                    "file_id": file_id
-                }
-            
-            # STEP 2: Download/Export file content
-            try:
-                if "google-apps" in mime_type:
-                    logger.info(f"STEP 2 - Exporting Google Workspace file: {file_name}")
-                    file_content = await self.drive_service.export_file(file_id, "application/pdf")
-                    logger.info("STEP 2 - Successfully exported Google Workspace file to PDF")
-                else:
-                    logger.info(f"STEP 2 - Downloading regular file: {file_name}")
-                    file_content = await self.drive_service.download_file(file_id)
-                    logger.info("STEP 2 - Successfully downloaded file")
-            except Exception as e:
-                error_msg = f"STEP 2 FAILED - File processing: {str(e)}"
-                logger.error(error_msg)
-                return {
-                    "success": False,
-                    "error": error_msg,
-                    "file_id": file_id,
-                    "file_name": file_name,
-                    "mime_type": mime_type
-                }
-            
-            # STEP 3: Extract text and structured data
-            logger.info("STEP 3 - Processing document with OCR...")
-            try:
-                ocr_result = await self.ocr_service.process_document(file_id)
-                
-                if not ocr_result.get("success"):
-                    logger.error(f"STEP 3 FAILED - OCR processing: {ocr_result.get('error')}")
-                    return {
-                        "success": False,
-                        "error": f"STEP 3 FAILED - OCR processing: {ocr_result.get('error')}",
-                        "file_id": file_id
-                    }
-                
-                # Parse OCR result if needed
-                if isinstance(ocr_result, str):
-                    try:
-                        ocr_result = json.loads(ocr_result)
-                    except json.JSONDecodeError as e:
-                        logger.error(f"STEP 3 FAILED - Parse OCR result: {str(e)}")
-                        return {
-                            "success": False,
-                            "error": f"STEP 3 FAILED - Parse OCR result: {str(e)}",
-                            "file_id": file_id
-                        }
-                
-                logger.info("STEP 3 - OCR processing completed successfully")
-            except Exception as e:
-                logger.error(f"STEP 3 FAILED - OCR processing: {str(e)}")
-                return {
-                    "success": False,
-                    "error": f"STEP 3 FAILED - OCR processing: {str(e)}",
-                    "file_id": file_id
-                }
-            
-            # STEP 4: Extract and structure information
-            extracted_text = ocr_result.get("data", {}).get("raw_text", "")
-            extracted_fields = ocr_result.get("data", {}).get("extracted_fields", {})
-            
-            # Get and simplify entity name
-            raw_entity_name = extracted_fields.get("entity", {}).get("name", "")
-            entity_name = self._simplify_entity_name(raw_entity_name, file_name)
-            
-            # Extract meaningful document title
-            document_title = self._extract_document_title(file_name, extracted_text)
-            
-            # Generate document summary
-            document_summary = await self._generate_document_summary(extracted_text, extracted_fields)
-            
-            # Extract simple task (if any)
-            task = self._extract_simple_task(extracted_text, extracted_fields)
-            
-            # Update document info
-            document_info = {
-                "file_name": file_name,
-                "document_title": document_title,
-                "file_id": file_id,
-                "entity_name": entity_name,
-                "processing_time": datetime.utcnow().isoformat(),
-                "summary": document_summary,
-                "task": task,
-                "file_metadata": file_metadata,
-                "mime_type": mime_type,
-                "status": "pending_approval"
-            }
-            
-            # STEP 6: Send for human approval (NO file moving yet!)
-            if self.slack_service:
-                try:
-                    # Format approval request message
-                    message = (
-                        f"🔍 *DOCUMENT REVIEW REQUIRED*\n\n"
-                        f"📄 *Document Title:* {document_title}\n"
-                        f"🏢 *Entity:* {entity_name}\n"
-                        f"📅 *Date:* {document_info['processing_time']}\n"
-                        f"📎 *Type:* {mime_type}\n\n"
-                        f"*📝 Summary:*\n{document_summary}\n\n"
-                    )
-                    
-                    if task:
-                        message += (
-                            f"*⚡ Required Action:*\n"
-                            f"Type: {task['type']}\n"
-                            f"Description: {task['description']}\n\n"
-                        )
-                    
-                    message += (
-                        f"*🔗 Drive Link:* https://drive.google.com/file/d/{file_id}\n\n"
-                        f"⚠️ **NO FILES HAVE BEEN MOVED YET**\n"
-                        f"Please review and approve/reject/correct the analysis before any actions are taken."
-                    )
-                    
-                    await self.slack_service.send_message(message)
-                    logger.info("STEP 6 - Successfully sent approval request to Slack")
-                except Exception as e:
-                    logger.error(f"STEP 6 FAILED - Slack notification: {str(e)}")
-                    # Continue as this is not critical for processing
-            
-            # STEP 5: Generate review tasks for human
-            try:
-                review_tasks = await self.agent.plan_review_tasks(document_info)
-                if not review_tasks:
-                    logger.warning("STEP 5 - No review tasks generated")
-                    review_tasks = ["Review document classification and entity identification"]
-                logger.info(f"STEP 5 - Generated {len(review_tasks)} review tasks")
-            except Exception as e:
-                error_msg = f"STEP 5 FAILED - Plan review tasks: {str(e)}"
-                logger.error(error_msg)
-                review_tasks = [f"Error: {error_msg}", "Manual review required"]
-            
-            # IMPORTANT: DO NOT move files or store in vector DB until approval
-            logger.info("STEP 7 - WAITING FOR HUMAN APPROVAL - No actions taken until approved")
-            
-            return {
-                "success": True,
-                "status": "pending_approval",
-                "message": f"Document processed and sent for review: {file_name}",
-                "entity_name": entity_name,
-                "review_tasks": review_tasks,
-                "document_info": document_info,
-                "next_action": "awaiting_human_approval"
-            }
-            
-        except Exception as e:
-            error_msg = f"Error processing document: {str(e)}"
-            logger.error(error_msg)
-            return {
-                "success": False,
-                "error": error_msg,
-                "file_id": file_id
-            }
-
     async def approve_document(self, file_id: str, approved_entity: str, human_corrections: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Handle human approval and execute final actions.
@@ -646,6 +652,121 @@ class DocumentProcessorService:
                 "error": error_msg,
                 "file_id": file_id
             }
+
+    async def wait_for_approval(self, document_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Wait for human approval and process the response.
+        
+        Args:
+            document_info: Document information including file_id, entity_name, etc.
+            
+        Returns:
+            Dict containing the approval result
+        """
+        try:
+            # Format and send review message
+            review_message = self._format_review_message(document_info)
+            slack_result = await self.slack_service.send_review_request(review_message)
+            
+            if not slack_result.get("ok"):
+                raise ValueError(f"Failed to send Slack message: {slack_result.get('error')}")
+            
+            # Wait for human response
+            channel = slack_result["channel"]
+            thread_ts = slack_result["ts"]
+            
+            logger.info("Waiting for human approval...")
+            response = await self.slack_service.wait_for_response(
+                channel=channel,
+                thread_ts=thread_ts
+            )
+            
+            if not response:
+                logger.warning("No response received within timeout period")
+                return {
+                    "success": True,
+                    "status": "pending_approval",
+                    "document_info": document_info,
+                    "message": "Waiting for human approval"
+                }
+            
+            # Process the approval/correction
+            if response["action"] == "approve":
+                # Call handler_vector to process approval
+                approval_result = await self.handler_vector.handle_approval(
+                    file_id=document_info["file_id"],
+                    approved_entity=response["entity_name"] or document_info["entity_name"],
+                    human_corrections=response.get("corrections")
+                )
+                
+                if approval_result["success"]:
+                    document_info["status"] = "approved_and_processed"
+                    logger.info("Document approved and processed")
+                    return {
+                        "success": True,
+                        "status": "approved_and_processed",
+                        "document_info": document_info,
+                        "approval_result": approval_result
+                    }
+                else:
+                    logger.error(f"Failed to process approval: {approval_result.get('error')}")
+                    document_info["status"] = "approval_failed"
+                    return {
+                        "success": False,
+                        "status": "approval_failed",
+                        "document_info": document_info,
+                        "error": approval_result.get("error")
+                    }
+            
+            elif response["action"] == "correct":
+                # Update document info with corrections
+                document_info.update(response.get("corrections", {}))
+                document_info["status"] = "corrections_received"
+                logger.info("Received corrections from human review")
+                return {
+                    "success": True,
+                    "status": "corrections_received",
+                    "document_info": document_info,
+                    "corrections": response.get("corrections")
+                }
+            
+            return {
+                "success": True,
+                "status": "unknown_response",
+                "document_info": document_info,
+                "message": "Received unknown response type"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in approval workflow: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "document_info": document_info
+            }
+
+    def _format_review_message(self, document_info: Dict[str, Any]) -> str:
+        """Format document info into a Slack review request message.
+        
+        Args:
+            document_info: Document information including title, entity, summary etc.
+            
+        Returns:
+            Formatted message string for Slack
+        """
+        message = (
+            f"🔍 *DOCUMENT REVIEW REQUIRED*\n\n"
+            f"📄 *Document Title:* {document_info['document_title']}\n"
+            f"🏢 *Entity:* {document_info['entity_name']}\n"
+            f"📅 *Date:* {document_info['processing_time']}\n"
+            f"📎 *Type:* {document_info['mime_type']}\n\n"
+            f"*📝 Summary:*\n{document_info['summary']}\n\n"
+            f"*🔗 Drive Link:* https://drive.google.com/file/d/{document_info['file_id']}\n\n"
+            f"⚠️ **Please review and approve/reject/correct the analysis.**\n"
+            f"- Type 'approve' or '✅' to approve as is\n"
+            f"- Type 'approve as ENTITY_NAME' to approve with a different entity name\n"
+            f"- Type 'correct entity to ENTITY_NAME' to request corrections"
+        )
+        return message
 
 class DocumentProcessor:
     """Service for processing and storing documents with vector search capabilities."""

@@ -1,12 +1,7 @@
-from google.cloud import vision
-from google.cloud.vision_v1 import types
 import logging
 from typing import Optional, Dict, Any, List
 import asyncio
 from ..core.config import get_settings
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
 import io
 import os
 import tempfile
@@ -18,41 +13,207 @@ import base64
 import json
 from datetime import datetime, timedelta
 import pickle
+import PyPDF2
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+# Try to import Google Cloud Vision - make it optional
+try:
+    from google.cloud import vision
+    from google.cloud.vision_v1 import types
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseDownload
+    GOOGLE_VISION_AVAILABLE = True
+    logger.info("Google Cloud Vision imported successfully")
+except ImportError as e:
+    GOOGLE_VISION_AVAILABLE = False
+    logger.warning(f"Google Cloud Vision not available: {e}. OCR will fall back to PDF text extraction only.")
+
 class OCRService:
-    """Service for handling OCR operations using Google Cloud Vision API."""
+    """Service for OCR and text extraction from documents."""
     
     def __init__(self):
         """Initialize the OCR service with Google Cloud Vision client."""
+        self.temp_dir = Path(tempfile.mkdtemp(prefix="gabriel_agent_ocr_"))
+        
+        if GOOGLE_VISION_AVAILABLE:
+            try:
+                self.client = vision.ImageAnnotatorClient()
+                self.vision_enabled = True
+                logger.info("OCR Service initialized with Google Cloud Vision")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Google Cloud Vision client: {str(e)}")
+                self.client = None
+                self.vision_enabled = False
+        else:
+            self.client = None
+            self.vision_enabled = False
+            logger.info("OCR Service initialized without Google Cloud Vision (using PDF text extraction only)")
+    
+    async def process_document(self, file_path: str, file_name: str = None, mime_type: str = None) -> Dict[str, Any]:
+        """Process a document with OCR and extract structured information.
+        
+        Args:
+            file_path: Path to the document file
+            file_name: Optional name of the file
+            mime_type: Optional MIME type of the file
+            
+        Returns:
+            Dict containing OCR results and extracted information
+        """
         try:
-            self.settings = get_settings()
-            logger.debug(f"Loading credentials from: {self.settings.get_google_credentials_path()}")
+            logger.info(f"Processing document: {file_name or file_path}")
             
-            # Initialize credentials with token refresh
-            self.credentials = service_account.Credentials.from_service_account_file(
-                self.settings.get_google_credentials_path(),
-                scopes=['https://www.googleapis.com/auth/cloud-vision']
-            )
+            # For PDFs, try PDF service first
+            if mime_type == "application/pdf":
+                try:
+                    from .pdf_service import PDFService
+                    pdf_service = PDFService()
+                    pdf_result = await pdf_service.extract_text(file_path)
+                    
+                    if pdf_result["success"] and pdf_result.get("text"):
+                        logger.info("Successfully extracted text using PDF service")
+                        return {
+                            "success": True,
+                            "data": {
+                                "raw_text": pdf_result["text"],
+                                "extracted_fields": await self._extract_fields(pdf_result["text"]),
+                                "char_count": len(pdf_result["text"]),
+                                "method": "pdf_service"
+                            }
+                        }
+                    else:
+                        logger.warning(f"PDF service extraction failed: {pdf_result.get('error')}")
+                        if pdf_result.get("is_scanned"):
+                            logger.info("Document appears to be scanned, proceeding with OCR")
+                except Exception as e:
+                    logger.warning(f"Error using PDF service: {str(e)}")
             
-            # Set token expiry to 55 minutes (5 minutes before the 60-minute limit)
-            self.credentials.expiry = datetime.utcnow() + timedelta(minutes=55)
+            # Process with OCR if available
+            if self.vision_enabled:
+                logger.info("Processing with Google Cloud Vision OCR")
+                ocr_result = await self._process_with_vision(file_path)
+                
+                if not ocr_result["success"]:
+                    return ocr_result
+            else:
+                logger.warning("Google Cloud Vision not available, cannot perform OCR on non-PDF files")
+                return {
+                    "success": False,
+                    "error": "Google Cloud Vision not available and document is not a PDF or PDF text extraction failed"
+                }
             
-            logger.debug("Credentials loaded successfully")
+            extracted_text = ocr_result["text"]
+            extracted_fields = await self._extract_fields(extracted_text)
             
-            # Initialize the Vision client
-            self.client = vision.ImageAnnotatorClient(credentials=self.credentials)
-            logger.debug("Vision client initialized successfully")
-            
-            # Store the last token refresh time
-            self.last_refresh = datetime.utcnow()
+            return {
+                "success": True,
+                "data": {
+                    "raw_text": extracted_text,
+                    "extracted_fields": extracted_fields,
+                    "char_count": len(extracted_text),
+                    "method": "google_vision_ocr"
+                }
+            }
             
         except Exception as e:
-            logger.error(f"Error initializing OCRService: {str(e)}")
-            raise
+            logger.error(f"Error processing document: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def _process_with_vision(self, file_path: str) -> Dict[str, Any]:
+        """Process a document with Google Cloud Vision OCR.
+        
+        Args:
+            file_path: Path to the document file
+            
+        Returns:
+            Dict containing OCR results
+        """
+        if not self.vision_enabled or not self.client:
+            return {
+                "success": False,
+                "error": "Google Cloud Vision is not available"
+            }
+            
+        try:
+            # Read the file content
+            with open(file_path, 'rb') as image_file:
+                content = image_file.read()
+            
+            image = vision.Image(content=content)
+            
+            # Perform OCR
+            response = self.client.document_text_detection(image=image)
+            
+            if response.error.message:
+                raise Exception(
+                    f"Error detected in OCR response: {response.error.message}"
+                )
+            
+            # Extract full text
+            text = response.full_text_annotation.text
+            
+            if not text:
+                return {
+                    "success": False,
+                    "error": "No text detected in document"
+                }
+            
+            return {
+                "success": True,
+                "text": text
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in OCR processing: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def _extract_fields(self, text: str) -> Dict[str, Any]:
+        """Extract structured fields from text.
+        
+        Args:
+            text: Text to extract fields from
+            
+        Returns:
+            Dict containing extracted fields
+        """
+        try:
+            # Extract dates
+            date_pattern = r'\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b'
+            dates = re.findall(date_pattern, text, re.IGNORECASE)
+            
+            # Extract monetary amounts
+            amount_pattern = r'\$\s*\d+(?:,\d{3})*(?:\.\d{2})?|\d+(?:,\d{3})*(?:\.\d{2})?\s*(?:USD|EUR|GBP)'
+            amounts = re.findall(amount_pattern, text)
+            
+            # Extract email addresses
+            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+            emails = re.findall(email_pattern, text)
+            
+            # Extract names (basic)
+            name_pattern = r'Mr\.|Mrs\.|Ms\.|Dr\.|Prof\. [A-Z][a-z]+ [A-Z][a-z]+'
+            names = re.findall(name_pattern, text)
+            
+            return {
+                "dates": dates,
+                "monetary_amounts": amounts,
+                "emails": emails,
+                "names": names
+            }
+            
+        except Exception as e:
+            logger.error(f"Error extracting fields: {str(e)}")
+            return {}
 
     def __del__(self):
         """Cleanup temporary directory on object destruction."""
@@ -95,7 +256,7 @@ class OCRService:
             # Check if file is a PDF based on MIME type
             if mime_type == 'application/pdf':
                 logger.info(f"Detected PDF file: {file_name}, using PDF processing")
-                return await self._process_pdf(file_content, file_id)
+                return await self._process_pdf(file_content)
             else:
                 logger.info(f"Detected image/other file: {file_name}, using image processing")
                 return await self._process_image(file_content, file_id)
@@ -173,7 +334,11 @@ class OCRService:
                         img.save(img_byte_arr, format='PNG')
                         img_byte_arr = img_byte_arr.getvalue()
                         
-                        # Perform OCR on the image
+                        # Perform OCR on the image if Vision is available
+                        if not self.vision_enabled or not self.client:
+                            logger.warning("Google Cloud Vision not available for OCR processing")
+                            continue
+                            
                         image = vision.Image(content=img_byte_arr)
                         response = self.client.text_detection(image=image)
                         
@@ -231,6 +396,13 @@ class OCRService:
 
     async def _process_image(self, file_content: bytes, file_id: str) -> Dict[str, Any]:
         """Process image file for OCR."""
+        if not self.vision_enabled or not self.client:
+            return {
+                "success": False,
+                "error": "Google Cloud Vision is not available for image processing",
+                "file_id": file_id
+            }
+            
         try:
             # Create image object for Vision API
             image = vision.Image(content=file_content)
@@ -308,53 +480,6 @@ class OCRService:
         except Exception as e:
             logger.error(f"Error getting file content: {str(e)}")
             raise
-
-    async def process_document(self, file_id: str) -> Dict[str, Any]:
-        """
-        Process a document and extract structured information.
-        
-        Args:
-            file_id (str): The Google Drive file ID to process
-            
-        Returns:
-            Dict[str, Any]: Dictionary containing:
-                - success (bool): Whether the operation was successful
-                - data (Dict): Extracted data if successful
-                - error (str): Error message if unsuccessful
-                - file_id (str): The processed file ID
-        """
-        try:
-            # Extract text from document
-            extraction_result = await self.extract_text(file_id)
-            
-            if not extraction_result["success"]:
-                return {
-                    "success": False,
-                    "error": extraction_result["error"],
-                    "file_id": file_id
-                }
-            
-            # Analyze text to extract structured data
-            text = extraction_result["text"]
-            structured_data = await self._analyze_text(text)
-            
-            return {
-                "success": True,
-                "data": {
-                    "raw_text": text,
-                    "extracted_fields": structured_data
-                },
-                "file_id": file_id,
-                "is_scanned": extraction_result.get("is_scanned", False)
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in document processing: {str(e)}")
-            return {
-                "success": False,
-                "error": str(e),
-                "file_id": file_id
-            }
 
     async def _analyze_text(self, text: str) -> Dict[str, Any]:
         """

@@ -4,6 +4,9 @@ import os
 from pathlib import Path
 import logging
 from typing import Optional, List
+from pydantic import SecretStr, PostgresDsn
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +72,16 @@ class Settings(BaseSettings):
     RATE_LIMIT_WINDOW: int = 60
     RATE_LIMIT_STRATEGY: str = "fixed-window"
     
+    # Database Configuration
+    DB_HOST: str
+    DB_PORT: int
+    DB_USER: str
+    DB_PASSWORD: SecretStr
+    DB_NAME: str
+    DB_CONNECTION_NAME: Optional[str] = None # For Cloud SQL Proxy, if used
+    DATABASE_URL: Optional[PostgresDsn] = None # Can be provided directly or assembled
+
+
     class Config:
         env_file = ".env"
         case_sensitive = True

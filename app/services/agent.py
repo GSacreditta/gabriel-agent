@@ -4,7 +4,7 @@ from langchain.prompts import PromptTemplate, ChatPromptTemplate
 from langchain.prompts.chat import SystemMessagePromptTemplate, HumanMessagePromptTemplate, MessagesPlaceholder
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 import logging
 from ..core.config import get_settings
 # Future Phase: Email functionality
@@ -199,6 +199,35 @@ class Agent:
         except Exception as e:
             logger.error(f"Error generating summary: {str(e)}")
             return "Summary generation failed"
+
+    async def process_text(
+        self,
+        text: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Mock processing text.
+        
+        Args:
+            text: Text to process
+            context: Optional processing context
+            
+        Returns:
+            Dict containing mock response
+        """
+        logger.info(f"MOCK AGENT - Processing text: {text[:100]}...")
+        return {
+            "success": True,
+            "processed_text": text,
+            "context": context or {}
+        }
+
+    async def get_file_metadata(self, file_id: str) -> Dict[str, Any]:
+        logger.info(f"MOCK DRIVE - Getting metadata for {file_id}")
+        return {
+            "id": file_id,
+            "name": "test_file.txt",
+            "mimeType": "text/plain"
+        }
 
 def create_langchain_agent(include_ocr: bool = True):
     """Create a LangChain agent with the specified tools."""

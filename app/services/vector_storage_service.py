@@ -122,31 +122,26 @@ class VectorStorageService:
         except Exception as e:
             logger.warning(f"Failed to cleanup temporary directory: {str(e)}")
 
-    async def store_document(self, document_id: str, content: str, metadata: dict):
-        """Store a document in the vector database."""
-        try:
-            logger.info(f"Storing document {document_id} in vector database")
+    async def store_document(
+        self,
+        file_id: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Mock storing a document.
+        
+        Args:
+            file_id: Document ID
+            metadata: Optional document metadata
             
-            # Ensure index exists
-            self._ensure_index_exists(content)
-            
-            # Add metadata to track document ID
-            enhanced_metadata = {**metadata, "document_id": document_id}
-            
-            # Add document to FAISS
-            self.vector_store.add_texts(
-                texts=[content],
-                metadatas=[enhanced_metadata]
-            )
-            
-            # Save index after adding document
-            self.vector_store.save_local(str(self.db_dir), index_name=self.index_name)
-            
-            logger.info(f"Successfully stored document {document_id}")
-            
-        except Exception as e:
-            logger.error(f"Error storing document {document_id}: {str(e)}")
-            raise
+        Returns:
+            Dict containing mock response
+        """
+        logger.info(f"MOCK VECTOR - Storing document {file_id}")
+        return {
+            "success": True,
+            "document_id": file_id,
+            "stored_at": metadata.get("processed_at", "test_time")
+        }
 
     async def search_documents(self, query: str, k: int = 5):
         """Search for similar documents."""
@@ -325,4 +320,38 @@ class VectorStorageService:
             logger.error(f"Error getting collection stats: {str(e)}")
             return {
                 "error": str(e)
+            }
+
+    async def _validate_file(self, file: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            # Get file metadata
+            metadata = await self.drive_service.get_file_metadata(file['id'])
+            mime_type = metadata.get('mimeType', '')
+            # Use the original file name if available, else fallback to metadata
+            file_name = file.get('name', '') or metadata.get('name', '')
+
+            # Check if file type is supported
+            if mime_type in self.supported_mime_types:
+                return {
+                    "is_valid": True,
+                    "file_type": self.supported_mime_types[mime_type]
+                }
+
+            # Fallback: check file extension for PDF
+            if file_name.lower().endswith('.pdf'):
+                return {
+                    "is_valid": True,
+                    "file_type": "PDF",
+                    "reason": f"Accepted by .pdf extension despite unrecognized mime_type: {mime_type}"
+                }
+
+            return {
+                "is_valid": False,
+                "reason": f"Unsupported file type: {mime_type}"
+            }
+        except Exception as e:
+            logger.error(f"Error validating file: {str(e)}")
+            return {
+                "is_valid": False,
+                "reason": f"Validation error: {str(e)}"
             } 
