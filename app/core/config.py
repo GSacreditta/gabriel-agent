@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     GOOGLE_APPLICATION_CREDENTIALS: str | None = None
     GOOGLE_DRIVE_FOLDER_ID: str = "1mI0N2VXo9zQPSBq4u4dNJd4ixjUuUTZe"  # SM18_FO folder
     
+    # Gmail API Configuration
+    GMAIL_CLIENT_ID: Optional[str] = None
+    GMAIL_CLIENT_SECRET: Optional[str] = None
+    GMAIL_CREDENTIALS_DIR: str = "config/credentials"
+    
     # Application
     APP_NAME: str = "Gabriel Agent Task Flow"
     DEBUG: bool = True

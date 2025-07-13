@@ -23,16 +23,25 @@ class SlackService:
         self,
         text: str,
         blocks: list = None,
-        channel: str = None
+        channel: str = None,
+        thread_ts: str = None
     ) -> Dict[str, Any]:
         """Send a message to Slack."""
         try:
             channel = channel or self.default_channel
-            response = self.client.chat_postMessage(
-                channel=channel,
-                text=text,
-                blocks=blocks
-            )
+            # Build the message payload
+            message_payload = {
+                "channel": channel,
+                "text": text
+            }
+            
+            # Add optional parameters if provided
+            if blocks:
+                message_payload["blocks"] = blocks
+            if thread_ts:
+                message_payload["thread_ts"] = thread_ts
+                
+            response = self.client.chat_postMessage(**message_payload)
             return {
                 "success": True,
                 "message_ts": response["ts"],
@@ -220,32 +229,116 @@ class SlackService:
             logger.error(f"Error handling event: {str(e)}")
     
     async def _parse_human_response(self, text: str) -> Dict[str, Any]:
-        """Parse human response to document review request."""
-        text = text.lower().strip()
+        """Parse human response to document review request using natural language understanding."""
+        import re
         
-        # Initialize response object
+        original_text = text.strip()
+        text_lower = text.lower().strip()
+        
+        # Initialize response object - more flexible structure
         response = {
             "action": None,
-            "entity_name": None,
-            "corrections": {}
+            "corrections": {},
+            "feedback": original_text  # Always preserve original user feedback
         }
         
-        # Check for approval keywords
-        if any(word in text for word in ["approve", "approved", "accept", "accepted", "yes", "👍", "✅"]):
-            response["action"] = "approve"
-            # Try to extract entity name if provided with approval
-            if "as" in text:
-                entity = text.split("as")[-1].strip()
-                response["entity_name"] = entity
-            
-        # Check for correction keywords
-        elif any(word in text for word in ["correct", "fix", "change", "update"]):
+        # 🔥 REJECTION PATTERNS - More conversational
+        rejection_patterns = [
+            r'\b(no|nope|reject|rejected|deny|denied|cancel|wrong|incorrect|not correct|not right|❌|👎)\b',
+            r'\b(don\'t approve|do not approve|don\'t accept|do not accept)\b',
+            r'\b(that\'s wrong|this is wrong|not good|not ok)\b'
+        ]
+        
+        for pattern in rejection_patterns:
+            if re.search(pattern, text_lower):
+                response["action"] = "reject"
+                return response
+        
+        # 🔥 GENERIC VALUE EXTRACTION - Handle any type of correction
+        # Look for patterns like "change X to Y", "set X as Y", "X should be Y"
+        value_patterns = [
+            # Bracketed format: [Any Value]
+            r'\[([^\]]+)\]',
+            # Quoted format: "Any Value"
+            r'"([^"]+)"',
+            r"'([^']+)'",
+            # "yes but call it X", "ok but make it X"
+            r'\b(?:yes|ok|okay)\s+but\s+(?:call|make|set)\s+it\s+(.+?)(?:\.|$)',
+            # "approve as X", "accept as X" 
+            r'\b(?:approve|accept)\s+(?:it\s+)?as\s+(.+?)(?:\.|$)',
+            # "change it to X", "correct it to X", "fix it to X" - more generic
+            r'\b(?:change|correct|fix|update|modify)\s+(?:it|this|that|the\s+\w+)?\s*(?:to|as)\s+(.+?)(?:\.|$)',
+            # "it should be X", "the [field] should be X" - more generic
+            r'\b(?:it|this|that|the\s+\w+)\s+(?:should|must)\s+be\s+(.+?)(?:\.|$)',
+            # "make it X", "set it to X" - more generic
+            r'\b(?:make|set)\s+(?:it|this|that|the\s+\w+)?\s*(?:to|as)?\s+(.+?)(?:\.|$)',
+            # "[field] is X", "value is X", "amount is X" - more generic
+            r'\b(?:\w+)\s+(?:is|should\s+be)\s+(.+?)(?:\.|$)',
+            # "call it X", "name it X"
+            r'\b(?:call|name)\s+it\s+(.+?)(?:\.|$)',
+            # Just the value after common words
+            r'\b(?:to|as)\s+(.+?)(?:\.|$)'
+        ]
+        
+        extracted_values = []
+        for pattern in value_patterns:
+            matches = re.finditer(pattern, original_text, re.IGNORECASE)
+            for match in matches:
+                value = match.group(1).strip()
+                # Clean up common artifacts
+                value = re.sub(r'^["\'\[\]]+|["\'\[\]]+$', '', value)
+                value = value.strip()
+                if value and len(value) > 1:
+                    extracted_values.append(value)
+        
+        # 🔥 CORRECTION PATTERNS - More flexible
+        correction_indicators = [
+            r'\b(change|correct|fix|update|modify|adjust|alter)\b',
+            r'\b(it should be|should be|make it|set it to)\b',
+            r'\b(instead of|rather than|not)\b.*\b(it should be|should be)\b'
+        ]
+        
+        is_correction = any(re.search(pattern, text_lower) for pattern in correction_indicators)
+        
+        if is_correction:
             response["action"] = "correct"
-            # Extract corrections (e.g., "correct entity to Apple Inc")
-            if "entity to" in text:
-                entity = text.split("entity to")[-1].strip()
-                response["entity_name"] = entity
-                response["corrections"]["entity_name"] = entity
+            # Store all extracted values - let the downstream system decide what to do with them
+            if extracted_values:
+                response["corrections"]["suggested_values"] = extracted_values
+                response["corrections"]["primary_value"] = extracted_values[0]
+            return response
+        
+        # 🔥 APPROVAL PATTERNS - More conversational
+        approval_patterns = [
+            r'\b(yes|yep|ok|okay|good|fine|right|approve|approved|accept|accepted|✅|👍)\b',
+            r'\b(looks good|looks fine|looks correct|looks right|that\'s right|that\'s correct)\b',
+            r'\b(go ahead|proceed|continue|confirm|confirmed)\b',
+            r'\b(approve it|accept it|good to go|all good|perfect)\b'
+        ]
+        
+        # Special handling for "that's correct" - should be approval, not correction
+        if re.search(r'\b(that\'s|thats)\s+(correct|right|good)\b', text_lower):
+            response["action"] = "approve"
+            if extracted_values:
+                response["corrections"]["suggested_values"] = extracted_values
+                response["corrections"]["primary_value"] = extracted_values[0]
+            return response
+        
+        is_approval = any(re.search(pattern, text_lower) for pattern in approval_patterns)
+        
+        if is_approval:
+            response["action"] = "approve"
+            # If values were mentioned with approval, include them
+            if extracted_values:
+                response["corrections"]["suggested_values"] = extracted_values
+                response["corrections"]["primary_value"] = extracted_values[0]
+            return response
+        
+        # 🔥 FALLBACK - If we found values but no clear action, assume correction
+        if extracted_values:
+            response["action"] = "correct"
+            response["corrections"]["suggested_values"] = extracted_values
+            response["corrections"]["primary_value"] = extracted_values[0]
         
         return response
 
@@ -313,65 +406,373 @@ class SlackService:
 
             # Check if this is a reply to our review request
             if thread_ts:
+                logger.info(f"🧵 Thread reply detected - thread_ts: {thread_ts}")
                 # Get the parent message
                 parent_message = await self.get_message(channel, thread_ts)
+                logger.info(f"📄 Parent message retrieved: {parent_message is not None}")
+                if parent_message:
+                    logger.info(f"🤖 Parent has bot_id: {parent_message.get('bot_id') is not None}")
+                    logger.info(f"📝 Parent text preview: {parent_message.get('text', '')[:100]}...")
+                
                 if parent_message and parent_message.get("bot_id"):  # If parent was from our bot
                     # Parse the response
                     response = await self._parse_human_response(text)
                     
-                    if response["action"] in ["approve", "correct"]:
-                        # Extract file_id from the parent message
+                    if response["action"] in ["approve", "correct", "reject"]:
                         parent_text = parent_message.get("text", "")
-                        file_id = None
-                        if "Drive Link:" in parent_text:
-                            file_id = parent_text.split("Drive Link:")[-1].split("/")[-1].strip()
                         
-                        if file_id:
-                            # Call HandlerVector to process the approval/correction
+                        # 🔥 NEW: Check if this is an HDL Agent review request
+                        logger.info(f"🔍 Checking parent text for 'Request ID:' - found: {'Request ID:' in parent_text}")
+                        if "Request ID:" in parent_text:
+                            # Extract request_id from HDL Agent message
                             try:
-                                result = await self.handler_vector.handle_approval(
-                                    file_id=file_id,
-                                    approved_entity=response["entity_name"],
-                                    human_corrections=response.get("corrections")
-                                )
+                                request_id = None
+                                for line in parent_text.split('\n'):
+                                    if "Request ID:" in line:
+                                        request_id = line.split('`')[1] if '`' in line else line.split(':')[1].strip()
+                                        break
                                 
-                                if not result["success"]:
+                                if request_id:
+                                    logger.info(f"Processing HDL Agent response: {response['action']} for request {request_id}")
+                                    
+                                    # Send initial acknowledgment
+                                    # Build response summary
+                                    response_summary = f"✅ **Response Received!**\n" + f"**Action:** {response['action']}\n"
+                                    
+                                    # Add corrections if present
+                                    if response.get('corrections', {}).get('primary_value'):
+                                        response_summary += f"**Primary Value:** {response['corrections']['primary_value']}\n"
+                                    if response.get('corrections', {}).get('suggested_values'):
+                                        values = response['corrections']['suggested_values']
+                                        if len(values) > 1:
+                                            response_summary += f"**All Values:** {', '.join(values)}\n"
+                                    
+                                    response_summary += f"**Request ID:** `{request_id}`\n" + f"_Processing your response..._"
+                                    
                                     await self.send_message(
-                                        f"❌ Failed to process approval: {result.get('error', 'Unknown error')}",
+                                        response_summary,
+                                        channel=channel,
+                                        thread_ts=thread_ts
+                                    )
+                                    
+                                    # 🔥 COMPLETE THE HDL WORKFLOW!
+                                    try:
+                                        # Get agent coordinator from main app
+                                        from app.main import agent_coordinator
+                                        
+                                        if agent_coordinator:
+                                            # Route the human response to HDL Agent for completion
+                                            completion_result = await agent_coordinator.route_message(
+                                                source="SLACK_SERVICE",
+                                                target="HDL_AGENT", 
+                                                message={
+                                                    "action": "process_human_response",
+                                                    "data": {
+                                                        "request_id": request_id,
+                                                        "decision": response['action'],
+                                                        "corrections": response.get('corrections', {}),
+                                                        "feedback": response.get('feedback', text)
+                                                    }
+                                                }
+                                            )
+                                            
+                                            # Send completion confirmation
+                                            if completion_result.get("status") == "success":
+                                                result_data = completion_result.get("result", {})
+                                                decision = result_data.get("decision")
+                                                execution_result = result_data.get("execution_result", {})
+                                                
+                                                if decision == "approve" or decision == "correct":
+                                                    # Build completion summary
+                                                    completion_summary = f"🎉 **Request Completed Successfully!**\n" + f"**Action:** {decision.title()}\n"
+                                                    
+                                                    # Add the values that were processed 
+                                                    if response.get('corrections', {}).get('primary_value'):
+                                                        completion_summary += f"**Applied Value:** {response['corrections']['primary_value']}\n"
+                                                    
+                                                    completion_summary += (
+                                                        f"**Status:** {execution_result.get('status', 'completed')}\n" +
+                                                        f"**Request ID:** `{request_id}`\n\n" +
+                                                        f"✅ _Your response has been processed and the action has been completed._"
+                                                    )
+                                                    
+                                                    await self.send_message(
+                                                        completion_summary,
+                                                        channel=channel,
+                                                        thread_ts=thread_ts
+                                                    )
+                                                else:
+                                                    await self.send_message(
+                                                        f"🚫 **Request Rejected**\n" +
+                                                        f"**Request ID:** `{request_id}`\n" +
+                                                        f"**Status:** Action was rejected as requested\n\n" +
+                                                        f"✅ _Your decision has been recorded._",
+                                                        channel=channel,
+                                                        thread_ts=thread_ts
+                                                    )
+                                            else:
+                                                await self.send_message(
+                                                    f"⚠️ **Processing Warning**\n" +
+                                                    f"**Request ID:** `{request_id}`\n" +
+                                                    f"**Issue:** {completion_result.get('message', 'Unknown error')}\n" +
+                                                    f"**Status:** Response recorded but may need manual review",
+                                                    channel=channel,
+                                                    thread_ts=thread_ts
+                                                )
+                                        else:
+                                            await self.send_message(
+                                                f"❌ **System Error**\n" +
+                                                f"**Issue:** Agent coordinator not available\n" +
+                                                f"**Request ID:** `{request_id}`\n" +
+                                                f"**Action:** Response recorded but needs manual processing",
+                                                channel=channel,
+                                                thread_ts=thread_ts
+                                            )
+                                            
+                                    except Exception as completion_error:
+                                        logger.error(f"Error completing HDL workflow: {completion_error}")
+                                        await self.send_message(
+                                            f"❌ **Processing Error**\n" +
+                                            f"**Request ID:** `{request_id}`\n" +
+                                            f"**Error:** {str(completion_error)}\n" +
+                                            f"**Action:** Response recorded but needs manual review",
+                                            channel=channel,
+                                            thread_ts=thread_ts
+                                        )
+                                    
+                                    logger.info(f"HDL Agent response completed: {request_id} -> {response['action']}")
+                                    
+                                else:
+                                    await self.send_message(
+                                        "❌ Could not extract Request ID from the original message",
                                         channel=channel,
                                         thread_ts=thread_ts
                                     )
                             except Exception as e:
-                                logger.error(f"Error processing approval: {str(e)}")
+                                logger.error(f"Error processing HDL Agent response: {str(e)}")
                                 await self.send_message(
-                                    f"❌ Error processing approval: {str(e)}",
+                                    f"❌ Error processing HDL response: {str(e)}",
+                                    channel=channel,
+                                    thread_ts=thread_ts
+                                )
+                        
+                        # Handle document processing approvals (existing logic)
+                        elif "Drive Link:" in parent_text:
+                            file_id = parent_text.split("Drive Link:")[-1].split("/")[-1].strip()
+                            
+                            if file_id and self.handler_vector:
+                                try:
+                                    result = await self.handler_vector.handle_approval(
+                                        file_id=file_id,
+                                        approved_entity=response["entity_name"],
+                                        human_corrections=response.get("corrections")
+                                    )
+                                    
+                                    if not result["success"]:
+                                        await self.send_message(
+                                            f"❌ Failed to process approval: {result.get('error', 'Unknown error')}",
+                                            channel=channel,
+                                            thread_ts=thread_ts
+                                        )
+                                except Exception as e:
+                                    logger.error(f"Error processing document approval: {str(e)}")
+                                    await self.send_message(
+                                        f"❌ Error processing approval: {str(e)}",
+                                        channel=channel,
+                                        thread_ts=thread_ts
+                                    )
+                            else:
+                                await self.send_message(
+                                    "❌ Could not find file ID or handler not available",
                                     channel=channel,
                                     thread_ts=thread_ts
                                 )
                         else:
                             await self.send_message(
-                                "❌ Could not find file ID in the original message",
+                                "❌ Could not identify the type of review request",
                                 channel=channel,
                                 thread_ts=thread_ts
                             )
                     return
 
             # Handle other messages (non-approval related)
+            logger.info(f"💬 Processing as general message - thread_ts: {thread_ts}")
             bot_user_id = self.client.auth_test()["user_id"]
             is_mentioned = f"<@{bot_user_id}>" in text
             
+            # 🔥 NEW: Check if this might be a response to a recent HDL review request
+            # even if not threaded properly
+            if not thread_ts and not is_mentioned:
+                response = await self._parse_human_response(text)
+                if response["action"] in ["approve", "correct", "reject"]:
+                    logger.info(f"🎯 Detected HDL response pattern without thread: {response['action']}")
+                    
+                    # Look for recent HDL Agent messages in this channel (last 10 messages)
+                    try:
+                        recent_messages = self.client.conversations_history(
+                            channel=channel,
+                            limit=10
+                        )
+                        
+                        if recent_messages["ok"]:
+                            for msg in recent_messages["messages"]:
+                                if (msg.get("bot_id") and 
+                                    "Request ID:" in msg.get("text", "") and
+                                    "HUMAN REVIEW REQUESTED" in msg.get("text", "")):
+                                    
+                                    logger.info(f"🎯 Found recent HDL request in channel, treating as response")
+                                    # Extract request_id
+                                    parent_text = msg.get("text", "")
+                                    request_id = None
+                                    for line in parent_text.split('\n'):
+                                        if "Request ID:" in line:
+                                            request_id = line.split('`')[1] if '`' in line else line.split(':')[1].strip()
+                                            break
+                                    
+                                    if request_id:
+                                        # Build response summary for fallback case
+                                        fallback_summary = f"✅ **Response Received!**\n" + f"**Action:** {response['action']}\n"
+                                        
+                                        # Add corrections if present
+                                        if response.get('corrections', {}).get('primary_value'):
+                                            fallback_summary += f"**Primary Value:** {response['corrections']['primary_value']}\n"
+                                        
+                                        fallback_summary += (
+                                            f"**Request ID:** `{request_id}`\n" +
+                                            f"_Processing your response..._\n\n" +
+                                            f"💡 _Tip: Next time, reply in the thread for faster processing!_"
+                                        )
+                                        
+                                        await self.send_message(
+                                            fallback_summary,
+                                            channel=channel
+                                        )
+                                        
+                                        # 🔥 COMPLETE THE HDL WORKFLOW for fallback case too!
+                                        try:
+                                            from app.main import agent_coordinator
+                                            
+                                            if agent_coordinator:
+                                                completion_result = await agent_coordinator.route_message(
+                                                    source="SLACK_SERVICE",
+                                                    target="HDL_AGENT", 
+                                                    message={
+                                                        "action": "process_human_response",
+                                                        "data": {
+                                                            "request_id": request_id,
+                                                            "decision": response['action'],
+                                                            "entity_name": response.get('entity_name'),
+                                                            "corrections": response.get('corrections', {}),
+                                                            "original_text": text
+                                                        }
+                                                    }
+                                                )
+                                                
+                                                if completion_result.get("status") == "success":
+                                                    result_data = completion_result.get("result", {})
+                                                    decision = result_data.get("decision")
+                                                    execution_result = result_data.get("execution_result", {})
+                                                    
+                                                    if decision == "approve" or decision == "correct":
+                                                        # Build completion summary for fallback
+                                                        fallback_completion = f"🎉 **Request Completed Successfully!**\n" + f"**Action:** {decision.title()}\n"
+                                                        
+                                                        # Add the values that were processed 
+                                                        if response.get('corrections', {}).get('primary_value'):
+                                                            fallback_completion += f"**Applied Value:** {response['corrections']['primary_value']}\n"
+                                                        
+                                                        fallback_completion += (
+                                                            f"**Status:** {execution_result.get('status', 'completed')}\n" +
+                                                            f"**Request ID:** `{request_id}`"
+                                                        )
+                                                        
+                                                        await self.send_message(
+                                                            fallback_completion,
+                                                            channel=channel
+                                                        )
+                                                    else:
+                                                        await self.send_message(
+                                                            f"🚫 **Request Rejected** - **Request ID:** `{request_id}`",
+                                                            channel=channel
+                                                        )
+                                        except Exception as completion_error:
+                                            logger.error(f"Error completing HDL workflow (fallback): {completion_error}")
+                                        
+                                        logger.info(f"HDL Agent response completed from channel message: {request_id} -> {response['action']}")
+                                        return
+                                    break
+                    except Exception as e:
+                        logger.error(f"Error checking for recent HDL messages: {e}")
+            
+            # 🔥 NEW: Check if this is a relevant question about entities, files, or system functionality
+            # even without mention - more natural conversation
+            text_lower = text.lower().strip()
+            relevant_keywords = [
+                # Entity-related questions
+                "entities", "entity", "companies", "company", "organization", "organizations",
+                "what entities", "list entities", "show entities", "existing entities",
+                "entity names", "company names", "all entities", "how many entities",
+                
+                # File and system questions
+                "files", "documents", "drive", "folder", "folders", "what files",
+                "list files", "show files", "upload", "scan", "process",
+                
+                # Task-related questions  
+                "tasks", "task", "todo", "what tasks", "list tasks", "show tasks",
+                
+                # General help
+                "help", "what can you do", "capabilities", "functions", "features",
+                "how to", "how do", "status", "health",
+                
+                # 🔥 NEW: Conversational follow-ups and natural language
+                "did you get", "did that work", "are you there", "hello", "hi", "hey",
+                "working?", "alive?", "ok?", "good?", "working", "alive",
+                "thanks", "thank you", "got it", "okay", "yes", "no",
+                "can you", "could you", "please", "would you",
+                "what about", "how about", "what if", "is it", "are you",
+                "do you", "will you", "response", "reply", "answer",
+                "understand", "received", "processed", "completed"
+            ]
+            
+            # Also check for contextual relevance - if bot was recently active, be more responsive
+            is_contextually_relevant = False
+            try:
+                # Check if bot sent a message in the last 5 minutes in this channel
+                recent_messages = self.client.conversations_history(
+                    channel=channel,
+                    limit=5,
+                    oldest=(datetime.utcnow().timestamp() - 300)  # 5 minutes ago
+                )
+                
+                if recent_messages["ok"]:
+                    bot_user_id = self.client.auth_test()["user_id"]
+                    for msg in recent_messages["messages"]:
+                        if msg.get("user") == bot_user_id or msg.get("bot_id"):
+                            is_contextually_relevant = True
+                            logger.debug(f"🎯 Found recent bot activity, being more responsive to: {text}")
+                            break
+            except Exception as e:
+                logger.debug(f"Error checking recent activity: {e}")
+            
+            is_relevant_question = (
+                any(keyword in text_lower for keyword in relevant_keywords) or
+                is_contextually_relevant
+            )
+            
             # Respond to:
             # 1. Direct mentions in any channel
-            # 2. Direct messages (DM/IM channels)
-            # 3. Messages in channels that start with the bot's name
+            # 2. Direct messages (DM/IM channels)  
+            # 3. Messages that start with the bot's name
+            # 4. 🔥 NEW: Relevant questions about system functionality
             should_respond = (
                 is_mentioned or 
                 channel_type in ["im", "mpim"] or
-                text.lower().startswith(("gabriel", "hey gabriel", "hi gabriel"))
+                text.lower().startswith(("gabriel", "hey gabriel", "hi gabriel")) or
+                is_relevant_question
             )
             
             if not should_respond:
-                logger.debug(f"Ignoring message - not mentioned and not a DM. Channel type: {channel_type}")
+                logger.debug(f"Ignoring message - not mentioned, not a DM, and not relevant. Channel type: {channel_type}")
                 return
 
             logger.info(f"Processing message from user {user}: {text}")
@@ -381,6 +782,96 @@ class SlackService:
                 mention = f"<@{bot_user_id}>"
                 text = text.replace(mention, "").strip()
                 logger.debug(f"Removed bot mention. New text: {text}")
+
+            # 🔥 NEW: Handle specific types of questions with appropriate responses
+            
+            # Entity-related questions
+            if is_relevant_question and any(keyword in text_lower for keyword in [
+                "entities", "entity names", "existing entities", "list entities", "all entities",
+                "companies", "company names", "organizations"
+            ]):
+                logger.info(f"🎯 Handling entity-related question: {text}")
+                try:
+                    from app.main import agent_coordinator
+                    
+                    if agent_coordinator:
+                        # Get list of entities
+                        entities_result = await agent_coordinator.route_message(
+                            source="SLACK_SERVICE",
+                            target="DB_AGENT",
+                            message={
+                                "action": "list_entities",
+                                "data": {}
+                            }
+                        )
+                        
+                        if entities_result.get("status") == "success":
+                            entities = entities_result.get("result", [])
+                            if entities:
+                                entity_list = "\n".join([f"• **{entity.get('name', 'Unknown')}** (ID: {entity.get('entity_id', 'N/A')})" for entity in entities])
+                                response_text = f"📋 **Current Entities in System:**\n\n{entity_list}\n\n📊 **Total:** {len(entities)} entities"
+                            else:
+                                response_text = "📋 **No entities found** in the system yet.\n\n💡 You can create entities by uploading documents or using the `/entities` API endpoint."
+                        else:
+                            response_text = f"❌ **Error retrieving entities:** {entities_result.get('message', 'Unknown error')}"
+                        
+                        await self.send_message(response_text, channel=channel)
+                        return
+                    else:
+                        await self.send_message(
+                            "❌ **System Error:** Agent coordinator not available. Please try again later.",
+                            channel=channel
+                        )
+                        return
+                        
+                except Exception as e:
+                    logger.error(f"Error handling entity question: {e}")
+                    await self.send_message(
+                        f"❌ **Error:** Could not retrieve entity information: {str(e)}",
+                        channel=channel
+                    )
+                    return
+            
+            # 🔥 NEW: Conversational follow-ups and status checks
+            elif is_relevant_question and any(keyword in text_lower for keyword in [
+                "did you get", "did that work", "are you there", "working?", "alive?",
+                "ok?", "good?", "working", "alive", "response", "received"
+            ]):
+                logger.info(f"🎯 Handling conversational follow-up: {text}")
+                response_options = [
+                    "Yes, I'm here and working! 👋 How can I help you?",
+                    "All systems operational! ✅ What would you like me to do?",
+                    "I'm alive and ready to assist! 🤖 What's next?",
+                    "Yes, I received that! 📨 Everything's working fine on my end.",
+                    "I'm here and listening! 👂 How can I help you today?"
+                ]
+                # Pick response based on the text content
+                if "get" in text_lower or "received" in text_lower:
+                    response_text = "Yes, I received that! 📨 Everything's working fine on my end."
+                elif "work" in text_lower:
+                    response_text = "All systems operational! ✅ What would you like me to do?"
+                elif "there" in text_lower or "alive" in text_lower:
+                    response_text = "I'm here and listening! 👂 How can I help you today?"
+                else:
+                    response_text = "Yes, I'm here and working! 👋 How can I help you?"
+                
+                await self.send_message(response_text, channel=channel)
+                return
+            
+            # 🔥 NEW: Greetings and polite responses
+            elif is_relevant_question and any(keyword in text_lower for keyword in [
+                "hello", "hi", "hey", "thanks", "thank you", "got it", "okay"
+            ]):
+                logger.info(f"🎯 Handling greeting/polite response: {text}")
+                if any(word in text_lower for word in ["thank", "thanks"]):
+                    response_text = "You're welcome! 😊 Anything else I can help you with?"
+                elif any(word in text_lower for word in ["hello", "hi", "hey"]):
+                    response_text = "Hello! 👋 I'm Gabriel Agent, your AI assistant. How can I help you today?"
+                else:
+                    response_text = "Great! 👍 Let me know if you need anything else."
+                
+                await self.send_message(response_text, channel=channel)
+                return
 
             if not self.agent:
                 logger.error("Agent not initialized")

@@ -34,6 +34,104 @@
 - Generate usage statistics and reports
 - Implement help and documentation access
 
+## Proposed Agent Architecture (As Proposed)
+
+### Agent Tool Implementation Guidelines
+
+#### 1. File Management Agent Tool (As Proposed)
+**Implementation Requirements:**
+- Inherit from `StatefulBaseTool` base class
+- Implement all file operations: scan, move, copy, delete, create
+- Maintain file inventory state
+- Query DB Agent for entity matching before folder operations
+- Support both scheduled and on-demand execution
+
+**Key Methods:**
+- `scan_drive_folder()` - Scan Google Drive for new files
+- `create_entity_folder()` - Create folders based on entity matching
+- `move_file_to_entity()` - Organize files by entity
+- `maintain_file_inventory()` - Update file state tracking
+
+#### 2. Extraction Agent Tool (As Proposed)
+**Implementation Requirements:**
+- Follow extraction rules from document_processor.py
+- Handle email + attachment processing separately
+- Generate confidence scores for all extractions
+- Pass ALL extractions to HDL Agent for review
+- Specialize by document type (PDF, images, docs)
+
+**Key Methods:**
+- `extract_document_info()` - Main extraction logic
+- `process_email_with_attachments()` - Email handling
+- `generate_confidence_scores()` - Quality assessment
+- `request_hdl_review()` - Human review workflow
+
+#### 3. Storage Agent Tool (As Proposed)
+**Implementation Requirements:**
+- Generate embeddings internally
+- Manage ChromaDB collections and structure
+- Provide similarity search services
+- Store metadata using extraction field definitions
+
+**Key Methods:**
+- `generate_embeddings()` - Create vector embeddings
+- `store_document_vectors()` - ChromaDB storage
+- `similarity_search()` - Find related documents
+- `manage_collections()` - Database structure management
+
+#### 4. HDL Agent Tool (As Proposed)
+**Implementation Requirements:**
+- Manage complete human interaction workflows
+- Handle ALL task action reviews
+- Implement 12-hour timeout retry logic
+- Coordinate file operations with File Management Agent
+
+**Key Methods:**
+- `request_human_review()` - Send review requests to Slack
+- `process_human_response()` - Handle approvals/rejections
+- `coordinate_file_operations()` - Request file actions
+- `handle_timeout_retry()` - Retry logic
+
+#### 5. DB Agent Tool (As Proposed)
+**Implementation Requirements:**
+- Implement basic CRUD operations
+- Provide entity matching for File Management Agent
+- Manage database tables: Entities, Tasks, Obligations, Authorizations
+- Simple operations only (no complex analytics)
+
+**Key Methods:**
+- `search_entity_by_name()` - Entity matching
+- `store_document_metadata()` - Document tracking
+- `create_new_entity()` - New entity creation
+- `basic_crud_operations()` - Standard database operations
+
+### State Management Implementation (As Proposed)
+
+#### 1. AgentState Class
+```python
+@dataclass
+class AgentState:
+    current_task: Optional[str] = None
+    processed_files: Dict[str, Any] = None
+    user_context: Dict[str, Any] = None
+    workflow_state: Dict[str, Any] = None
+    last_action: Optional[str] = None
+    timestamp: datetime = None
+```
+
+#### 2. StateManager Service
+- Coordinate state across all agent tools
+- Provide state persistence and recovery
+- Enable debugging and monitoring
+
+#### 3. Tool Base Class
+```python
+class StatefulBaseTool(BaseTool):
+    def __init__(self, state_manager: Optional[Any] = None):
+        super().__init__()
+        self.state_manager = state_manager
+```
+
 ## Implementation Guidelines
 
 ### 1. Code Organization

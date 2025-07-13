@@ -150,37 +150,84 @@ class GoogleDriveService:
             logger.error(f"Error downloading file: {str(e)}")
             raise
 
-    async def create_folder(self, name: str, parent_id: str = None) -> dict:
-        """Create a new folder in Google Drive with token refresh."""
+    async def create_folder(self, folder_name: str, parent_folder_id: str = None) -> str:
+        """Create a new folder in Google Drive"""
         try:
-            # Ensure token is valid before making the request
-            await self._ensure_valid_token()
-            
-            # Use the main authorized folder if no parent_id is provided
-            if not parent_id:
-                parent_id = self.settings.GOOGLE_DRIVE_FOLDER_ID
-            
-            # Create folder metadata
             folder_metadata = {
-                'name': name,
-                'mimeType': 'application/vnd.google-apps.folder',
-                'parents': [parent_id]
+                'name': folder_name,
+                'mimeType': 'application/vnd.google-apps.folder'
             }
             
-            def _create_folder():
-                folder = self.service.files().create(
-                    body=folder_metadata,
-                    fields='id, name, parents'
-                ).execute()
-                return folder
+            if parent_folder_id:
+                folder_metadata['parents'] = [parent_folder_id]
             
-            folder = await asyncio.to_thread(_create_folder)
-            logger.debug(f"Created folder: {name} with ID: {folder.get('id')}")
-            return folder
+            # Create folder
+            folder = self.service.files().create(
+                body=folder_metadata,
+                fields='id'
+            ).execute()
+            
+            folder_id = folder.get('id')
+            logger.info(f"Created folder '{folder_name}' with ID: {folder_id}")
+            
+            return folder_id
             
         except Exception as e:
-            logger.error(f"Error creating folder: {str(e)}")
-            raise
+            logger.error(f"Error creating folder '{folder_name}': {str(e)}")
+            return None
+
+    async def move_file_to_folder(self, file_id: str, destination_folder_id: str) -> bool:
+        """Move a file to a different folder"""
+        try:
+            # Get the file's current parents
+            file_metadata = self.service.files().get(
+                fileId=file_id,
+                fields='parents'
+            ).execute()
+            
+            previous_parents = ",".join(file_metadata.get('parents', []))
+            
+            # Move the file to the new folder
+            file = self.service.files().update(
+                fileId=file_id,
+                addParents=destination_folder_id,
+                removeParents=previous_parents,
+                fields='id, parents'
+            ).execute()
+            
+            logger.info(f"Moved file {file_id} to folder {destination_folder_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error moving file {file_id} to folder {destination_folder_id}: {str(e)}")
+            return False
+
+    async def get_folder_by_name(self, folder_name: str, parent_folder_id: str = None) -> str:
+        """Find a folder by name, optionally within a parent folder"""
+        try:
+            query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder'"
+            
+            if parent_folder_id:
+                query += f" and '{parent_folder_id}' in parents"
+            
+            results = self.service.files().list(
+                q=query,
+                fields='files(id, name)'
+            ).execute()
+            
+            folders = results.get('files', [])
+            
+            if folders:
+                folder_id = folders[0]['id']
+                logger.info(f"Found folder '{folder_name}' with ID: {folder_id}")
+                return folder_id
+            else:
+                logger.info(f"Folder '{folder_name}' not found")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error finding folder '{folder_name}': {str(e)}")
+            return None
 
     async def create_or_match_folder(self, name: str) -> dict:
         """Create or match a folder with token refresh."""
@@ -218,37 +265,6 @@ class GoogleDriveService:
             
         except Exception as e:
             logger.error(f"Error creating or matching folder: {str(e)}")
-            raise
-
-    async def move_file_to_folder(self, file_id: str, folder_id: str) -> dict:
-        """Move a file to a specific folder with token refresh."""
-        try:
-            # Ensure token is valid before making the request
-            await self._ensure_valid_token()
-            
-            def _move_file():
-                # Get the current parents
-                file = self.service.files().get(
-                    fileId=file_id,
-                    fields='parents'
-                ).execute()
-                
-                # Remove from old parents and add to new parent
-                previous_parents = ",".join(file.get('parents', []))
-                file = self.service.files().update(
-                    fileId=file_id,
-                    addParents=folder_id,
-                    removeParents=previous_parents,
-                    fields='id, parents'
-                ).execute()
-                return file
-            
-            result = await asyncio.to_thread(_move_file)
-            logger.debug(f"Moved file {file_id} to folder {folder_id}")
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error moving file to folder: {str(e)}")
             raise
 
     async def get_file_metadata(self, file_id: str) -> Dict[str, Any]:

@@ -159,6 +159,8 @@ Gabriel Agent is an AI-powered personal assistant designed to manage structured 
 - Advanced AI capabilities
 - Custom plugin system
 - API marketplace
+- **Hybrid Search Capabilities**: Implement keyword and hybrid search functionality to complement existing semantic search, combining vector similarity with traditional full-text search for improved accuracy and user experience
+- **MCP (Model Context Protocol) Integration**: Implement standardized tool interface for AI assistants, enabling dynamic tool discovery and usage through protocols like those demonstrated in [LangConnect-Client](https://github.com/teddynote-lab/LangConnect-Client). This would restructure agent functions into MCP-compatible tools for enhanced AI assistant integration and workflow automation
 
 ## 8. Success Metrics
 - User adoption rate
@@ -228,7 +230,77 @@ Gabriel Agent is an AI-powered personal assistant designed to manage structured 
 - Regular feature releases
 - Security updates
 - Performance optimizations
-- User feedback implementation 
+- User feedback implementation
+
+## 12. Proposed Tool-Based Agent Architecture (As Proposed)
+
+### 12.1 Architecture Migration Plan
+The system will migrate from service-based to tool-based agent architecture to enable better modularity, state management, and future LangGraph integration.
+
+### 12.2 Agent Tool Groups
+
+#### 12.2.1 File Management Agent (As Proposed)
+- **Scope:** ALL file operations (scan, move, copy, delete, create files & folders)
+- **Triggers:** Scheduled + On-demand from HDL Agent
+- **State Management:** Maintains file inventory state
+- **Intelligence:** Validates folder creation logic by searching/matching existing Entity DB table
+- **Key Integration:** Queries DB Agent for entity matching before folder operations
+
+#### 12.2.2 Extraction Agent (As Proposed)
+- **Instructions:** Follow detailed extraction rules from document_processor.py
+- **Email Handling:** 
+  - Process email and attachments as separate documents
+  - Generate clear email summary
+  - Request HDL help for password-protected attachments
+- **Confidence Scoring:** Generates confidence scores for all extractions
+- **Human Review:** ALL extractions go to HDL Agent for review/approval/correction
+- **Specialization:** Different extraction strategies by document type
+- **Data Flow:** Pass results directly to Storage Agent
+
+#### 12.2.3 Storage Agent (Vector) (As Proposed)
+- **Input:** Receives chunked text + metadata from Extraction Agent
+- **Embedding Generation:** Generates embeddings internally (optimal for vector DB)
+- **Database Management:** Manages ChromaDB collections and optimal storage structure
+- **Search Services:** Provides similarity search capabilities to other agents
+- **Metadata:** Uses extraction fields defined in document_processor.py
+- **Similarity Analysis:** On-demand trigger when other agents request it
+
+#### 12.2.4 HDL Agent (Human-Device Interface) (As Proposed)
+- **Workflow Management:** Complete human interaction workflow (request → review → approval → execute action)
+- **Review Scope:** ALL task actions require human review
+- **Learning:** Not implemented initially
+- **Timeout Handling:** Retry after 12 hours if no human response
+- **File Operations:** Can request File Management Agent for operations based on human decisions
+- **Interface:** Slack-based interaction
+
+#### 12.2.5 DB Agent (As Proposed)
+- **Scope:** Basic CRUD operations for defined database tables
+- **Entity Matching:** Provides entity matching services to File Management Agent
+- **Tables Managed:** Entities, Tasks, Obligations, Authorizations, DocumentMetadata
+- **Integration:** Simple structured data operations, no complex analytics
+- **Purpose:** Support other agents with database operations
+
+### 12.3 State Management System (As Proposed)
+- **Centralized State:** AgentState class managing workflow state
+- **State Manager:** Coordinates state across all agent tools
+- **LangGraph Ready:** Architecture designed for easy LangGraph migration
+
+### 12.4 Implementation Phases (As Proposed)
+
+#### Phase 1: Tool Migration (As Proposed)
+- Convert existing services to tool-based architecture
+- Implement basic state management
+- Establish agent coordination patterns
+
+#### Phase 2: Enhanced Coordination (As Proposed)
+- Implement advanced agent coordination
+- Add error handling and retry mechanisms
+- Optimize inter-agent communication
+
+#### Phase 3: LangGraph Integration (As Proposed)
+- Migrate to LangGraph for workflow orchestration
+- Implement advanced state management
+- Add workflow visualization and debugging
 
 ## File Discovery and Processing Flow
 
@@ -341,10 +413,24 @@ A database table will be implemented to store document processing history, inclu
      - Expiry (Date)
      - Notes (Text)
 
+5. **Document Metadata Table (As Proposed)**
+   - Primary key: Document ID (Google Drive file ID)
+   - Fields:
+     - Entity ID (Foreign Key to Entities)
+     - File Name (Text)
+     - Issue Date (Date)
+     - Subject (Text)
+     - Summary (Text)
+     - Document Type (Text)
+     - Drive Link (Text)
+     - Processing Time (DateTime)
+     - Confidence Scores (JSON)
+
 #### 5.5.2 Relationships
 - Tasks → Entities (Many-to-One)
 - Obligations → Entities (Many-to-One)
 - Authorizations → Entities (Many-to-One)
+- Document Metadata → Entities (Many-to-One)
 - Tasks → Obligations (Optional Many-to-One)
 
 #### 5.5.3 Implementation Phases

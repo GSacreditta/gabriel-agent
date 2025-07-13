@@ -1,7 +1,7 @@
 from langchain.agents import AgentExecutor, create_openai_functions_agent
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate, ChatPromptTemplate
-from langchain.prompts.chat import SystemMessagePromptTemplate, HumanMessagePromptTemplate, MessagesPlaceholder
+from langchain_core.prompts.chat import MessagesPlaceholder
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 from typing import Dict, Optional, Any
@@ -12,6 +12,8 @@ from ..core.config import get_settings
 from ..tools.drive_tool import DriveTool
 from ..tools.sheets_tool import ReadSheetTool, WriteSheetTool, AppendSheetTool, CreateSheetTool
 from ..tools.ocr_tool import OCRTool
+from ..tools.system_info_tool import SystemInfoTool
+from ..tools.agent_query_tool import AgentQueryTool
 import traceback
 
 # Configure logging
@@ -233,6 +235,19 @@ def create_langchain_agent(include_ocr: bool = True):
     """Create a LangChain agent with the specified tools."""
     tools = []
     
+    # Add system awareness tools first (most important)
+    try:
+        system_info_tool = SystemInfoTool()
+        tools.append(system_info_tool)
+    except Exception as e:
+        logger.warning(f"Failed to initialize SystemInfo tool: {str(e)}")
+    
+    try:
+        agent_query_tool = AgentQueryTool()
+        tools.append(agent_query_tool)
+    except Exception as e:
+        logger.warning(f"Failed to initialize AgentQuery tool: {str(e)}")
+    
     # Add OCR tool only if requested
     if include_ocr:
         try:
@@ -252,38 +267,53 @@ def create_langchain_agent(include_ocr: bool = True):
     return AgentExecutor.from_agent_and_tools(
         agent=create_openai_functions_agent(
             llm=ChatOpenAI(
-                model_name="gpt-4-turbo-preview",
+                model="gpt-4-turbo-preview",
                 temperature=0,
-                streaming=False,  # Disable streaming since we're not handling it
-                openai_api_key=get_settings().OPENAI_API_KEY
+                api_key=get_settings().OPENAI_API_KEY
             ),
             tools=tools,
             prompt=ChatPromptTemplate.from_messages([
-                ("system", """You are Gabriel, an AI assistant designed to process documents from Google Drive, read and extract information and plan tasks. 
-                You have access to various tools to help with document processing, including:
-                - Drive operations (list, search, download)
-                - Sheet operations (read, write, append, create)
-                - PDF and OCR capabilities for text extraction
-                - Vector Database for storing and searching documents
-                Your main responsibilities are:
-                1. Scan Google Drive Master folder for new documents (Every 30 minutes)
-                2. Identify file format and metadata (PDF, images, Google Docs, spreadsheets)
-                3. Process documents, by reading and extracting(embedding, chunking, etc.) structured information
-                4. Extract and read key information with confidence scores
-                5. Prepare results for human review according to required fields in "Structured output for document information."
-                6. Plan tasks for human review and action
-                7. Identify "similar entity Sub-Folder name" by searching Google Drive Master folder for similar entity names
-                8. Move document to "similar entity Sub-Folder", if not found, create new "similar entity Sub-Folder" (ask human for confirmation)
-                9. Move document  to "entity Sub-Folder" with processed document
-                10. Store processed document in Vector Database
-            
-                Always provide clear, structured responses and use the available tools effectively.
-                
-                When responding to chat messages:
-                1. Be concise and direct
-                2. If you don't understand a request, ask for clarification
-                3. If you can't do something, explain why clearly
-                4. Use the tools at your disposal when needed"""),
+                ("system", """You are Gabriel, an intelligent AI assistant with access to a comprehensive multi-agent system for document processing and entity management.
+
+🧠 **SYSTEM AWARENESS**: Before answering ANY question, you should understand your capabilities:
+- Use the 'system_info' tool to learn about available data sources and tools
+- Use 'agent_query' tool to access other agents and databases
+- ALWAYS check multiple data sources before concluding something doesn't exist
+
+🔍 **QUERY STRATEGY**: When users ask about entities, documents, or data:
+1. **First**: Query the database using agent_query (most reliable source)
+2. **Second**: Search vector database for related documents  
+3. **Third**: Check Google Drive for files/folders
+4. **Always**: Explain which sources you checked and provide comprehensive answers
+
+📊 **AVAILABLE DATA SOURCES**:
+- **PostgreSQL Database**: Primary entity storage (use DB_AGENT)
+- **ChromaDB Vector Database**: Document content and semantic search
+- **Google Drive**: File storage and organization
+- **Google Sheets**: Structured data processing
+
+🤖 **CORE RESPONSIBILITIES**:
+1. Entity management and search across all data sources
+2. Document processing with OCR and text extraction
+3. Human review workflow coordination
+4. File organization and storage management
+5. Task planning and execution
+6. Multi-source data correlation and analysis
+
+⚡ **INTERACTION GUIDELINES**:
+- Be proactive in checking ALL relevant data sources
+- Provide specific, actionable information
+- Explain your search process and data sources checked  
+- If information is missing, suggest next steps or alternatives
+- Use tools effectively to give comprehensive answers
+- Never assume data doesn't exist without checking all sources
+
+🛠️ **KEY TOOLS**:
+- system_info: Learn about capabilities and data sources
+- agent_query: Query other agents (DB_AGENT, etc.) and APIs
+- drive operations, OCR, sheet tools for document processing
+
+Remember: You have access to a powerful multi-agent system. Use it!"""),
                 ("human", "{input}"),
                 MessagesPlaceholder(variable_name="agent_scratchpad")
             ])
