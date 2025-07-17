@@ -20,7 +20,8 @@ class GoogleDriveService:
             self.settings = get_settings()
             logger.debug(f"Loading credentials from: {self.settings.get_google_credentials_path()}")
             
-            # Initialize credentials with token refresh
+            # Initialize service account credentials
+            # Service accounts handle token refresh automatically - no manual refresh needed
             self.credentials = service_account.Credentials.from_service_account_file(
                 self.settings.get_google_credentials_path(),
                 scopes=['https://www.googleapis.com/auth/drive']
@@ -30,17 +31,14 @@ class GoogleDriveService:
             logger.info(f"Service Account Email: {self.credentials.service_account_email}")
             logger.info(f"Project ID: {self.credentials.project_id}")
             
-            # Set token expiry to 55 minutes (5 minutes before the 60-minute limit)
-            self.credentials.expiry = datetime.utcnow() + timedelta(minutes=55)
-            
             logger.debug("Credentials loaded successfully")
             
-            # Build the service with auto-refresh
+            # Build the service - Google API client handles token refresh automatically
             self.service = build('drive', 'v3', credentials=self.credentials)
             logger.debug("Drive service built successfully")
             
-            # Store the last token refresh time
-            self.last_refresh = datetime.utcnow()
+            # Track initialization time for logging
+            self.initialized_at = datetime.utcnow()
             
         except Exception as e:
             logger.error(f"Error initializing GoogleDriveService: {str(e)}")
@@ -58,32 +56,13 @@ class GoogleDriveService:
         except Exception as e:
             logger.warning(f"Error during Google Drive Service cleanup: {str(e)}")
 
-    async def _ensure_valid_token(self):
-        """Ensure the token is valid and refresh if necessary."""
-        try:
-            # Check if token needs refresh (within 5 minutes of expiry)
-            if datetime.utcnow() + timedelta(minutes=5) >= self.credentials.expiry:
-                logger.debug("Token needs refresh, refreshing now...")
-                
-                # Refresh the token
-                self.credentials.refresh(None)
-                
-                # Update expiry to 55 minutes from now
-                self.credentials.expiry = datetime.utcnow() + timedelta(minutes=55)
-                self.last_refresh = datetime.utcnow()
-                
-                logger.debug("Token refreshed successfully")
-                
-        except Exception as e:
-            logger.error(f"Error refreshing token: {str(e)}")
-            raise
-
     async def get_folder_contents(self):
-        """Get contents of the authorized folder with token refresh."""
+        """Get contents of the authorized folder.
+        
+        Service account credentials automatically handle token refresh,
+        so no manual token management is needed.
+        """
         try:
-            # Ensure token is valid before making the request
-            await self._ensure_valid_token()
-            
             logger.info("=== Google Drive API Call Details ===")
             logger.info(f"Service Account File: {self.settings.get_google_credentials_path()}")
             logger.info(f"Service Account Email: {self.credentials.service_account_email}")
@@ -101,6 +80,7 @@ class GoogleDriveService:
                 }
                 logger.info(f"API Call Parameters: {params}")
                 
+                # Google API client automatically handles token refresh if needed
                 results = self.service.files().list(**params).execute()
                 
                 files = results.get('files', [])
@@ -127,11 +107,11 @@ class GoogleDriveService:
             raise
 
     async def download_file(self, file_id: str) -> bytes:
-        """Download a file from Google Drive."""
+        """Download a file from Google Drive.
+        
+        Service account credentials automatically handle token refresh.
+        """
         try:
-            # Ensure token is valid before making the request
-            await self._ensure_valid_token()
-            
             def _download():
                 request = self.service.files().get_media(fileId=file_id)
                 file = io.BytesIO()
@@ -230,11 +210,11 @@ class GoogleDriveService:
             return None
 
     async def create_or_match_folder(self, name: str) -> dict:
-        """Create or match a folder with token refresh."""
+        """Create or match a folder.
+        
+        Service account credentials automatically handle token refresh.
+        """
         try:
-            # Ensure token is valid before making the request
-            await self._ensure_valid_token()
-            
             # First try to find an existing folder
             query = f"name = '{name}' and mimeType = 'application/vnd.google-apps.folder' and '{self.settings.GOOGLE_DRIVE_FOLDER_ID}' in parents"
             
@@ -270,6 +250,8 @@ class GoogleDriveService:
     async def get_file_metadata(self, file_id: str) -> Dict[str, Any]:
         """Get file metadata.
         
+        Service account credentials automatically handle token refresh.
+        
         Args:
             file_id: File ID
             
@@ -277,9 +259,6 @@ class GoogleDriveService:
             Dict containing file metadata
         """
         try:
-            # Ensure token is valid before making the request
-            await self._ensure_valid_token()
-            
             def _get_metadata():
                 return self.service.files().get(
                     fileId=file_id,
@@ -295,11 +274,11 @@ class GoogleDriveService:
             raise
 
     async def export_file(self, file_id: str, mime_type: str) -> bytes:
-        """Export a Google Workspace file to a different format."""
+        """Export a Google Workspace file to a different format.
+        
+        Service account credentials automatically handle token refresh.
+        """
         try:
-            # Ensure token is valid before making the request
-            await self._ensure_valid_token()
-            
             def _export():
                 request = self.service.files().export_media(
                     fileId=file_id,
@@ -322,11 +301,11 @@ class GoogleDriveService:
             raise
 
     async def get_specific_folder_contents(self, folder_id: str):
-        """Get contents of a specific folder with token refresh."""
+        """Get contents of a specific folder.
+        
+        Service account credentials automatically handle token refresh.
+        """
         try:
-            # Ensure token is valid before making the request
-            await self._ensure_valid_token()
-            
             def _list_files():
                 params = {
                     'q': f"'{folder_id}' in parents and trashed = false",
