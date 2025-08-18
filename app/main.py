@@ -956,38 +956,36 @@ async def process_email_content(
 
 @app.get("/faiss/info")
 async def get_faiss_info():
-    """Enhanced FAISS collection information with detailed statistics"""
+    """Get FAISS vector storage information and status"""
     try:
-        if not services.get("agent_coordinator"):
-            raise HTTPException(status_code=503, detail="Agent Coordinator not initialized")
+        if not services.get("vector_service"):
+            raise HTTPException(status_code=503, detail="Vector Storage Service not initialized")
         
-        logger.debug("[REPORT] Fetching enhanced FAISS information")
+        logger.info("[FAISS] Getting vector storage information")
         
-        response = await services["agent_coordinator"].route_message(
-            "API_ENHANCED",
-            "STORAGE_AGENT",
-            {
-                "action": "get_collection_info",
-                "data": {},
-                "enhanced_features": {
-                    "detailed_statistics": True,
-                    "performance_metrics": True
-                }
-            }
-        )
+        # Get storage status from vector service
+        status = await services["vector_service"].get_storage_status()
         
-        # Add service integration status
-        if response.get("status") == "success":
-            response["service_status"] = {
+        # Get basic info about the service
+        info = {
+            "status": "success",
+            "message": "FAISS Vector Storage Service Information",
+            "service_status": {
                 "vector_service_active": services.get("vector_service") is not None,
                 "embedding_service_active": services.get("embedding_service") is not None,
-                "similarity_service_active": services.get("similarity_service") is not None
-            }
+                "cloud_storage_enabled": status.get("use_cloud_storage", False),
+                "bucket_name": status.get("bucket_name"),
+                "local_directory": status.get("local_directory"),
+                "index_name": status.get("index_name"),
+                "has_index": status.get("has_index", False)
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
         
-        return response
+        return info
         
     except Exception as e:
-        logger.error(f"Error getting enhanced FAISS info: {e}")
+        logger.error(f"Error getting FAISS info: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/faiss/search")
@@ -998,55 +996,33 @@ async def search_faiss(
     document_type: Optional[str] = None,
     date_range: Optional[Dict[str, str]] = None
 ):
-    """Enhanced similarity search in FAISS with advanced filtering"""
+    """Search for similar documents in FAISS vector storage"""
     try:
-        if not services.get("agent_coordinator"):
-            raise HTTPException(status_code=503, detail="Agent Coordinator not initialized")
+        if not services.get("vector_service"):
+            raise HTTPException(status_code=503, detail="Vector Storage Service not initialized")
         
-        logger.info(f"[SEARCH] Enhanced FAISS search: '{query}' (top_k: {top_k})")
+        logger.info(f"[FAISS] Searching for: '{query}' (top_k: {top_k})")
         
-        # Prepare enhanced filter metadata
-        filter_metadata = {}
-        if entity_name:
-            filter_metadata["entity_name"] = entity_name
-        if document_type:
-            filter_metadata["document_type"] = document_type
-        if date_range:
-            filter_metadata["date_range"] = date_range
-        
-        response = await services["agent_coordinator"].route_message(
-            "API_ENHANCED",
-            "STORAGE_AGENT",
-            {
-                "action": "similarity_search",
-                "data": {
-                    "query": query,
-                    "top_k": top_k,
-                    "filter_metadata": filter_metadata if filter_metadata else None,
-                    "enhanced_search": True
-                },
-                "search_features": {
-                    "semantic_similarity": True,
-                    "relevance_scoring": True,
-                    "result_ranking": True
-                }
-            }
+        # Perform similarity search using vector service
+        search_result = await services["vector_service"].search_documents(
+            query=query,
+            top_k=top_k
         )
         
         # Add search metadata
-        if response.get("status") == "success":
-            response["search_metadata"] = {
+        if search_result.get("success"):
+            search_result["search_metadata"] = {
                 "query": query,
                 "top_k": top_k,
-                "filters_applied": list(filter_metadata.keys()) if filter_metadata else [],
+                "filters_applied": [k for k, v in locals().items() if k in ["entity_name", "document_type", "date_range"] and v],
                 "timestamp": datetime.utcnow().isoformat(),
-                "search_type": "enhanced_semantic_search"
+                "search_type": "semantic_search"
             }
         
-        return response
+        return search_result
         
     except Exception as e:
-        logger.error(f"Error performing enhanced FAISS search: {e}")
+        logger.error(f"Error performing FAISS search: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/faiss/store")
@@ -1057,48 +1033,77 @@ async def store_in_faiss(
     document_type: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None
 ):
-    """Enhanced document storage in FAISS with rich metadata"""
+    """Store document content in FAISS vector storage"""
     try:
-        if not services.get("agent_coordinator"):
-            raise HTTPException(status_code=503, detail="Agent Coordinator not initialized")
+        if not services.get("vector_service"):
+            raise HTTPException(status_code=503, detail="Vector Storage Service not initialized")
         
-        logger.info(f"[STORE] Storing enhanced document in FAISS: {file_name}")
+        logger.info(f"[FAISS] Storing document: {file_name}")
         
-        # Prepare enhanced extraction data for storage
-        extraction_data = {
-            "file_name": file_name,
-            "entity_name": entity_name or "Enhanced Entity",
-            "subject": f"Enhanced document: {file_name}",
-            "summary": content[:200] + "..." if len(content) > 200 else content,
-            "content": content,
-            "document_type": document_type or "Enhanced Document",
-            "issue_date": datetime.utcnow().isoformat(),
-            "confidence_scores": {"subject": 0.98, "entity": 0.95, "content": 0.97},
-            "processing_time": 2.1,
-            "drive_link": f"https://enhanced.gabriel.com/files/{file_name}",
-            "enhanced_metadata": metadata or {},
-            "processing_version": "enhanced_v2.0"
-        }
-        
-        response = await services["agent_coordinator"].route_message(
-            "API_ENHANCED",
-            "STORAGE_AGENT",
-            {
-                "action": "store_extraction_data",
-                "data": extraction_data,
-                "storage_features": {
-                    "enhanced_indexing": True,
-                    "metadata_enrichment": True,
-                    "semantic_embedding": True
-                }
+        # Prepare document data for storage
+        documents = [{
+            "text": content,
+            "metadata": {
+                "file_name": file_name,
+                "entity_name": entity_name or "Unknown",
+                "document_type": document_type or "Document",
+                "timestamp": datetime.utcnow().isoformat(),
+                **metadata or {}
             }
-        )
+        }]
         
-        return response
+        # Store documents using vector service
+        store_result = await services["vector_service"].add_documents(documents)
+        
+        # Add storage metadata
+        if store_result.get("success"):
+            store_result["storage_metadata"] = {
+                "file_name": file_name,
+                "content_length": len(content),
+                "entity_name": entity_name,
+                "document_type": document_type,
+                "timestamp": datetime.utcnow().isoformat(),
+                "storage_type": "vector_embedding"
+            }
+        
+        return store_result
         
     except Exception as e:
-        logger.error(f"Error storing enhanced document in FAISS: {e}")
+        logger.error(f"Error storing document in FAISS: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
+# FAISS TEST ENDPOINT - Simple test for vector storage
+# ============================================================================
+
+@app.get("/faiss/test")
+async def test_faiss():
+    """Simple test endpoint to verify FAISS functionality"""
+    try:
+        if not services.get("vector_service"):
+            return {
+                "status": "error",
+                "message": "Vector Storage Service not initialized",
+                "available_services": list(services.keys())
+            }
+        
+        # Test basic functionality
+        status = await services["vector_service"].get_storage_status()
+        
+        return {
+            "status": "success",
+            "message": "FAISS Vector Storage Service is working",
+            "service_status": status,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error testing FAISS: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 # ============================================================================
 # SLACK INTEGRATION ENDPOINTS - Enhanced Slack Event Processing
