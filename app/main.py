@@ -11,7 +11,7 @@ IMPLEMENTATION PROGRESS:
 [SUCCESS] Agent API endpoints (/agents/status, /agents/capabilities, /agents/message)
 [SUCCESS] Entity management endpoints (/entities CRUD operations)
 [SUCCESS] Document processing endpoints (/extraction/extract-document, /extraction/process-email)
-[SUCCESS] ChromaDB vector storage endpoints (/chromadb/info, /chromadb/search, /chromadb/store)
+[SUCCESS] FAISS vector storage endpoints (/faiss/info, /faiss/search, /faiss/store)
 [SUCCESS] Slack integration (/slack/events with enhanced event processing)
 [SUCCESS] File management endpoints (/files/scan, /files/inventory)
 [SUCCESS] Startup/shutdown event handlers with proper service cleanup
@@ -31,7 +31,7 @@ ARCHITECTURE:
   • DB_AGENT: Database operations and entity management
   • FILE_MANAGEMENT_AGENT: Google Drive integration and file operations
   • EXTRACTION_AGENT: Document content extraction and processing
-  • STORAGE_AGENT: ChromaDB vector storage and similarity search
+  • STORAGE_AGENT: FAISS vector storage and similarity search
   • HDL_AGENT: High-level processing and Slack integration
 
 - Service Layer: 12+ services providing functionality:
@@ -334,7 +334,7 @@ async def initialize_services_enhanced():
             service_errors["pdf_service"] = str(e)
             initialization_results["pdf_service"] = False
         
-        # Step 5: Vector Storage (ChromaDB) - can fail gracefully
+        # Step 5: Vector Storage (FAISS) - can fail gracefully
         try:
             from app.services.vector_storage_service import VectorStorageService
             success = await initialize_service("vector_service", lambda: VectorStorageService())
@@ -951,17 +951,17 @@ async def process_email_content(
 
 
 # ============================================================================
-# CHROMADB VECTOR STORAGE ENDPOINTS - Enhanced Vector Operations
+# FAISS VECTOR STORAGE ENDPOINTS - Enhanced Vector Operations
 # ============================================================================
 
-@app.get("/chromadb/info")
-async def get_chromadb_info():
-    """Enhanced ChromaDB collection information with detailed statistics"""
+@app.get("/faiss/info")
+async def get_faiss_info():
+    """Enhanced FAISS collection information with detailed statistics"""
     try:
         if not services.get("agent_coordinator"):
             raise HTTPException(status_code=503, detail="Agent Coordinator not initialized")
         
-        logger.debug("[REPORT] Fetching enhanced ChromaDB information")
+        logger.debug("[REPORT] Fetching enhanced FAISS information")
         
         response = await services["agent_coordinator"].route_message(
             "API_ENHANCED",
@@ -987,23 +987,23 @@ async def get_chromadb_info():
         return response
         
     except Exception as e:
-        logger.error(f"Error getting enhanced ChromaDB info: {e}")
+        logger.error(f"Error getting enhanced FAISS info: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/chromadb/search")
-async def search_chromadb(
+@app.post("/faiss/search")
+async def search_faiss(
     query: str, 
     top_k: int = 5, 
     entity_name: Optional[str] = None,
     document_type: Optional[str] = None,
     date_range: Optional[Dict[str, str]] = None
 ):
-    """Enhanced similarity search in ChromaDB with advanced filtering"""
+    """Enhanced similarity search in FAISS with advanced filtering"""
     try:
         if not services.get("agent_coordinator"):
             raise HTTPException(status_code=503, detail="Agent Coordinator not initialized")
         
-        logger.info(f"[SEARCH] Enhanced ChromaDB search: '{query}' (top_k: {top_k})")
+        logger.info(f"[SEARCH] Enhanced FAISS search: '{query}' (top_k: {top_k})")
         
         # Prepare enhanced filter metadata
         filter_metadata = {}
@@ -1046,23 +1046,23 @@ async def search_chromadb(
         return response
         
     except Exception as e:
-        logger.error(f"Error performing enhanced ChromaDB search: {e}")
+        logger.error(f"Error performing enhanced FAISS search: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/chromadb/store")
-async def store_in_chromadb(
+@app.post("/faiss/store")
+async def store_in_faiss(
     file_name: str, 
     content: str, 
     entity_name: Optional[str] = None,
     document_type: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None
 ):
-    """Enhanced document storage in ChromaDB with rich metadata"""
+    """Enhanced document storage in FAISS with rich metadata"""
     try:
         if not services.get("agent_coordinator"):
             raise HTTPException(status_code=503, detail="Agent Coordinator not initialized")
         
-        logger.info(f"[STORE] Storing enhanced document in ChromaDB: {file_name}")
+        logger.info(f"[STORE] Storing enhanced document in FAISS: {file_name}")
         
         # Prepare enhanced extraction data for storage
         extraction_data = {
@@ -1097,7 +1097,7 @@ async def store_in_chromadb(
         return response
         
     except Exception as e:
-        logger.error(f"Error storing enhanced document in ChromaDB: {e}")
+        logger.error(f"Error storing enhanced document in FAISS: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============================================================================

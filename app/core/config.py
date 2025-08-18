@@ -50,11 +50,10 @@ class Settings(BaseSettings):
     # Directory settings
     TEMP_DIR: str = "temp"  # Default temporary directory
 
-    # ChromaDB settings
-    CHROMA_DB_HOST: str = "localhost"
-    CHROMA_DB_PORT: str = "8000"
-    CHROMA_PERSIST_DIRECTORY: str = "chroma_persist"
-    CHROMA_DB_PATH: str = "chroma_db"
+    # FAISS Vector Storage settings
+    FAISS_PERSIST_DIRECTORY: str = "/app/faiss_db"
+    FAISS_USE_CLOUD_STORAGE: bool = False
+    FAISS_BUCKET_NAME: str = "gabriel-agent-faiss"
 
     # File processing settings
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB in bytes

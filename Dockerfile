@@ -45,8 +45,6 @@ RUN mkdir -p /app/faiss_db \
     /app/temp \
     /app/logs \
     /app/config/credentials \
-    /app/chroma_db \
-    /app/test_chroma_db \
     /app/test_documents
 
 # Set proper permissions
@@ -54,6 +52,9 @@ RUN chmod -R 755 /app && \
     chmod -R 777 /app/faiss_db && \
     chmod -R 777 /app/temp && \
     chmod -R 777 /app/logs
+
+# Add volume mount for FAISS persistence
+VOLUME ["/app/faiss_db"]
 
 # Expose port
 EXPOSE $PORT

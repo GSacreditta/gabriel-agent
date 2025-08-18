@@ -7,6 +7,17 @@ from pathlib import Path
 import tempfile
 import shutil
 import os
+import json
+
+# Google Cloud Storage imports
+try:
+    from google.cloud import storage
+    from google.cloud.exceptions import NotFound
+    CLOUD_STORAGE_AVAILABLE = True
+except ImportError:
+    CLOUD_STORAGE_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("Google Cloud Storage not available - FAISS will use local storage only")
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +26,11 @@ class VectorStorageService:
     
     def __init__(
         self,
-        persist_directory: str = "faiss_db",
+        persist_directory: str = None,
         index_name: str = "documents",
-        use_temp_dir: bool = False
+        use_temp_dir: bool = False,
+        use_cloud_storage: bool = None,
+        bucket_name: str = None
     ):
         """Initialize the vector storage service.
         
@@ -29,7 +42,25 @@ class VectorStorageService:
         try:
             self.settings = get_settings()
             
+            # Determine storage configuration
+            if use_cloud_storage is None:
+                use_cloud_storage = getattr(self.settings, 'FAISS_USE_CLOUD_STORAGE', False)
+            
+            if use_cloud_storage and CLOUD_STORAGE_AVAILABLE:
+                self.use_cloud_storage = True
+                self.bucket_name = bucket_name or getattr(self.settings, 'FAISS_BUCKET_NAME', 'gabriel-agent-faiss')
+                self.storage_client = storage.Client()
+                self.bucket = self.storage_client.bucket(self.bucket_name)
+                logger.info(f"Using Google Cloud Storage bucket: {self.bucket_name}")
+            else:
+                self.use_cloud_storage = False
+                self.bucket = None
+                logger.info("Using local FAISS storage")
+            
             # Set up the vector database directory
+            if persist_directory is None:
+                persist_directory = getattr(self.settings, 'FAISS_PERSIST_DIRECTORY', '/app/faiss_db')
+            
             if use_temp_dir:
                 temp_base = Path(self.settings.TEMP_DIR)
                 temp_base.mkdir(parents=True, exist_ok=True)
@@ -52,7 +83,12 @@ class VectorStorageService:
             # Try to load existing FAISS index, or initialize empty
             self.index_path = self.db_dir / f"{index_name}.faiss"
             self.vector_store = None
-            self._load_or_create_index()
+            
+            # Load from cloud storage if available, otherwise local
+            if self.use_cloud_storage:
+                self._load_from_cloud_storage()
+            else:
+                self._load_or_create_index()
             
             logger.info("Vector Storage Service initialized successfully with FAISS")
         except Exception as e:
@@ -79,6 +115,89 @@ class VectorStorageService:
             logger.warning(f"Could not load existing index: {e}. Will create new one.")
             self.vector_store = None
 
+    def _load_from_cloud_storage(self):
+        """Load FAISS index from Google Cloud Storage."""
+        try:
+            if not self.use_cloud_storage or not self.bucket:
+                logger.warning("Cloud storage not available, falling back to local")
+                self._load_or_create_index()
+                return
+            
+            # Check if index exists in cloud storage
+            index_blob = self.bucket.blob(f"{self.index_name}.faiss")
+            pkl_blob = self.bucket.blob(f"{self.index_name}.pkl")
+            
+            if index_blob.exists() and pkl_blob.exists():
+                logger.info("Found FAISS index in cloud storage, downloading...")
+                
+                # Download index files
+                index_blob.download_to_filename(str(self.index_path))
+                pkl_path = self.db_dir / f"{self.index_name}.pkl"
+                pkl_blob.download_to_filename(str(pkl_path))
+                
+                # Load the index
+                self.vector_store = FAISS.load_local(
+                    str(self.db_dir),
+                    embeddings=self.embeddings,
+                    index_name=self.index_name,
+                    allow_dangerous_deserialization=True
+                )
+                logger.info("Successfully loaded FAISS index from cloud storage")
+            else:
+                logger.info("No existing index found in cloud storage, will create new one")
+                self._load_or_create_index()
+                
+        except Exception as e:
+            logger.warning(f"Failed to load from cloud storage: {e}. Falling back to local.")
+            self._load_or_create_index()
+
+    def _save_to_cloud_storage(self):
+        """Save FAISS index to Google Cloud Storage."""
+        try:
+            if not self.use_cloud_storage or not self.bucket or not self.vector_store:
+                return
+            
+            logger.info("Saving FAISS index to cloud storage...")
+            
+            # Save locally first
+            self.vector_store.save_local(str(self.db_dir), index_name=self.index_name)
+            
+            # Upload to cloud storage
+            index_path = self.db_dir / f"{self.index_name}.faiss"
+            pkl_path = self.db_dir / f"{self.index_name}.pkl"
+            
+            if index_path.exists():
+                index_blob = self.bucket.blob(f"{self.index_name}.faiss")
+                index_blob.upload_from_filename(str(index_path))
+                logger.info("Uploaded FAISS index to cloud storage")
+            
+            if pkl_path.exists():
+                pkl_blob = self.bucket.blob(f"{self.index_name}.pkl")
+                pkl_blob.upload_from_filename(str(pkl_path))
+                logger.info("Uploaded FAISS metadata to cloud storage")
+                
+        except Exception as e:
+            logger.error(f"Failed to save to cloud storage: {e}")
+
+    async def sync_to_cloud_storage(self):
+        """Manually trigger sync to cloud storage."""
+        if self.use_cloud_storage and self.vector_store:
+            self._save_to_cloud_storage()
+            return {"success": True, "message": "Synced to cloud storage"}
+        else:
+            return {"success": False, "message": "Cloud storage not enabled or no index to sync"}
+
+    async def get_storage_status(self):
+        """Get current storage configuration and status."""
+        return {
+            "use_cloud_storage": self.use_cloud_storage,
+            "bucket_name": self.bucket_name if self.use_cloud_storage else None,
+            "local_directory": str(self.db_dir),
+            "index_name": self.index_name,
+            "has_index": self.vector_store is not None,
+            "cloud_storage_available": CLOUD_STORAGE_AVAILABLE
+        }
+
     def _ensure_index_exists(self, sample_text: str = "Sample text for initialization"):
         """Ensure FAISS index exists, creating it if necessary."""
         if self.vector_store is None:
@@ -101,8 +220,13 @@ class VectorStorageService:
         try:
             # Save the index before cleanup
             if self.vector_store is not None:
+                # Save locally
                 self.vector_store.save_local(str(self.db_dir), index_name=self.index_name)
                 logger.info(f"Saved FAISS index to {self.db_dir}")
+                
+                # Save to cloud storage if enabled
+                if self.use_cloud_storage:
+                    self._save_to_cloud_storage()
             
             # Cleanup temporary directory if used
             if self.temp_dir and self.temp_dir.exists():
@@ -183,6 +307,10 @@ class VectorStorageService:
             
             # Save index after adding documents
             self.vector_store.save_local(str(self.db_dir), index_name=self.index_name)
+            
+            # Save to cloud storage if enabled
+            if self.use_cloud_storage:
+                self._save_to_cloud_storage()
             
             return {
                 "success": True,
