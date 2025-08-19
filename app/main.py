@@ -1048,7 +1048,7 @@ async def store_in_faiss(
                 "entity_name": entity_name or "Unknown",
                 "document_type": document_type or "Document",
                 "timestamp": datetime.utcnow().isoformat(),
-                **metadata or {}
+                **(metadata or {})
             }
         }]
         
