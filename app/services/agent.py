@@ -402,9 +402,9 @@ Audit/Log (min fields): timestamp, requester, channel, intent, tools_used, sourc
             ])
         ),
         tools=tools,
-        verbose=True,
+        verbose=False,  # Reduce debug token overhead
         handle_parsing_errors=True,
-        max_iterations=10  # Increased limit for complex document processing tasks
+        max_iterations=3  # Reduced to prevent excessive API calls and costs
     )
 
 def create_agent() -> Agent:

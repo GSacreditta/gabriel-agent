@@ -80,6 +80,16 @@ class SlackService:
             self.socket_task = None
             self.agent = None  # Will be set during initialization
             self.handler_vector = None  # Will be set during initialization
+            
+            # Get bot user ID to prevent processing our own messages
+            try:
+                auth_response = self.client.auth_test()
+                self.bot_user_id = auth_response["user_id"]
+                logger.info(f"Bot user ID: {self.bot_user_id}")
+            except Exception as e:
+                logger.warning(f"Could not get bot user ID: {e}")
+                self.bot_user_id = None
+                
             logger.info("SlackService instance created")
         except Exception as e:
             logger.error(f"Failed to create SlackService instance: {str(e)}")
@@ -400,7 +410,11 @@ class SlackService:
                 return
 
             # Ignore messages from bots (including ourselves)
-            if event.get("bot_id") or subtype == "bot_message":
+            # Fixed: Also check bot_profile and our own user_id to prevent message loops
+            if (event.get("bot_id") or 
+                subtype == "bot_message" or 
+                event.get("bot_profile") or
+                user == self.bot_user_id):
                 logger.debug(f"Ignoring bot message from {user}")
                 return
 
