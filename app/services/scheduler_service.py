@@ -131,6 +131,27 @@ class SchedulerService:
         self.task = asyncio.create_task(self._run_scheduler())
         logger.info("Scheduler started")
 
+    async def _run_scheduler(self):
+        """Main scheduler loop that runs every scan_interval."""
+        logger.info(f"Scheduler loop started with {self.scan_interval}s interval")
+        
+        while self.is_running:
+            try:
+                logger.info("🔍 Starting scheduled scan...")
+                await self._run_scan()
+                self.last_scan_time = datetime.utcnow()
+                logger.info(f"✅ Scheduled scan completed. Next scan in {self.scan_interval}s")
+                
+                # Wait for next scan interval
+                await asyncio.sleep(self.scan_interval)
+                
+            except Exception as e:
+                logger.error(f"Error in scheduler loop: {e}")
+                # Wait a bit before retrying to avoid rapid error loops
+                await asyncio.sleep(30)
+        
+        logger.info("Scheduler loop stopped")
+
     async def stop(self):
         """Stop the scheduler."""
         if not self.is_running:
