@@ -56,28 +56,35 @@ class SchedulerService:
             self.document_processor = document_processor
             logger.info("Using provided document processor")
         else:
-            # Initialize the document processor with required services
+            # Create and initialize the document processor with required services
+            from .document_processor import DocumentProcessorService
             from .ocr_service import OCRService
             from .pdf_service import PDFService
             from .vector_storage_service import VectorStorageService
             
             try:
+                # Create document processor instance
+                self.document_processor = DocumentProcessorService()
+                
+                # Create service instances
                 ocr_service = OCRService()
                 pdf_service = PDFService()
                 vector_service = VectorStorageService()
                 
+                # Initialize document processor with services
                 await self.document_processor.initialize(
                     ocr_service=ocr_service,
                     pdf_service=pdf_service,
                     vector_service=vector_service,
-                    drive_service=self.drive_service,
+                    drive_service=drive_service,  # Use parameter instead of self.drive_service
                     agent=agent,
                     slack_service=slack_service
                 )
-                logger.info("Document processor initialized with all services")
+                logger.info("Document processor created and initialized with all services")
             except Exception as e:
-                logger.error(f"Failed to initialize document processor: {e}")
-                # Continue with limited functionality
+                logger.error(f"Failed to create/initialize document processor: {e}")
+                # Continue with limited functionality - scheduler can still work with existing document_processor
+                logger.warning("Scheduler will continue with limited functionality")
         
         # Use provided drive service (required for authentication)
         if drive_service:
