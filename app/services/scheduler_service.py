@@ -23,11 +23,12 @@ class SchedulerService:
     def __init__(self):
         """Initialize the scheduler service."""
         self.settings = get_settings()
-        self.drive_service = GoogleDriveService()
+        self.drive_service = None  # Will be injected from main.py
         self.agent: Optional[Agent] = None
         self.slack_service: Optional[SlackService] = None
         self.file_discovery: Optional[FileDiscoveryService] = None
-        self.document_processor = DocumentProcessorService()
+        self.document_processor = None  # Will be injected from main.py
+        self.agent_coordinator = None  # Will be injected from main.py
         self.scan_interval = self.settings.SCHEDULER_SCAN_INTERVAL
         self.is_running = False
         self.task: Optional[asyncio.Task] = None
@@ -41,12 +42,14 @@ class SchedulerService:
         slack_service: SlackService,
         file_discovery: FileDiscoveryService,
         document_processor: 'DocumentProcessorService' = None,
-        drive_service: 'GoogleDriveService' = None
+        drive_service: 'GoogleDriveService' = None,
+        agent_coordinator = None
     ):
         """Initialize the service with required dependencies."""
         self.agent = agent
         self.slack_service = slack_service
         self.file_discovery = file_discovery
+        self.agent_coordinator = agent_coordinator
         
         # Use provided document processor or create new one
         if document_processor:
@@ -76,12 +79,39 @@ class SchedulerService:
                 logger.error(f"Failed to initialize document processor: {e}")
                 # Continue with limited functionality
         
-        # Use provided drive service or keep existing one
+        # Use provided drive service (required for authentication)
         if drive_service:
             self.drive_service = drive_service
-            logger.info("Using provided Google Drive service")
+            logger.info("Using provided authenticated Google Drive service")
+        else:
+            logger.error("No Google Drive service provided - folder scanning will fail")
         
         logger.info("Scheduler Service initialized with dependencies")
+
+    async def _process_via_agent_coordinator(self, file_id: str, file_data: dict) -> dict:
+        """Process document using the proper Agent Coordinator workflow"""
+        try:
+            file_name = file_data["name"]
+            logger.info(f"Processing {file_name} via Agent Coordinator workflow...")
+            
+            # Use the Agent Coordinator's document processing workflow
+            result = await self.agent_coordinator.process_document_workflow({
+                "file_id": file_id,
+                "file_name": file_name,
+                "file_data": file_data,
+                "source": "SCHEDULER_SERVICE"
+            })
+            
+            if result.get("status") == "success":
+                logger.info(f"Agent Coordinator workflow completed for: {file_name}")
+                return {"success": True, "workflow_result": result}
+            else:
+                logger.error(f"Agent Coordinator workflow failed for {file_name}: {result}")
+                return {"success": False, "error": result.get("message", "Unknown error")}
+                
+        except Exception as e:
+            logger.error(f"Error in Agent Coordinator workflow for {file_name}: {e}")
+            return {"success": False, "error": str(e)}
 
     async def start(self):
         """Start the scheduler."""
@@ -160,8 +190,12 @@ class SchedulerService:
                         logger.debug(f"File {file_name} already processed, skipping")
                         continue
                     
-                    # Process the document through the complete workflow
-                    result = await self._process_document_complete_workflow(file_id, file_data)
+                    # Process the document through Agent Coordinator workflow
+                    if self.agent_coordinator:
+                        result = await self._process_via_agent_coordinator(file_id, file_data)
+                    else:
+                        # Fallback to old workflow if coordinator not available
+                        result = await self._process_document_complete_workflow(file_id, file_data)
                     
                     if result["success"]:
                         logger.info(f"Successfully processed: {file_name}")
@@ -182,9 +216,9 @@ class SchedulerService:
     async def _is_file_already_processed(self, file_id: str) -> bool:
         """Check if a file has already been processed"""
         try:
-            from ..core.database.service import DatabaseService
+            from ..core.database.service import get_database_service
             
-            db_service = DatabaseService()
+            db_service = await get_database_service()
             
             # Query processed_files table
             query = "SELECT id FROM processed_files WHERE file_id = %s"

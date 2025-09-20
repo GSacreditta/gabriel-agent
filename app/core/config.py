@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     RATE_LIMIT_REQUESTS: int = 100
     RATE_LIMIT_WINDOW: int = 60
     RATE_LIMIT_STRATEGY: str = "fixed-window"
+
+    # Cloud-native settings
+    USE_SECRET_MANAGER: bool = False
     
     # Database Configuration
     DB_HOST: str
@@ -87,7 +90,8 @@ class Settings(BaseSettings):
 
 
     class Config:
-        env_file = ".env"
+        # Only load .env file if it exists (optional for cloud deployments)
+        env_file = ".env" if Path(".env").exists() else None
         case_sensitive = True
 
     def get_google_credentials_path(self) -> str:

@@ -3,7 +3,11 @@
 from typing import List, Dict, Any, Optional
 import logging
 import numpy as np
-from langchain_community.embeddings import OpenAIEmbeddings
+try:
+    from langchain_openai import OpenAIEmbeddings
+except ImportError:
+    # Fallback to legacy import
+    from langchain_community.embeddings import OpenAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from ..core.config import get_settings
 

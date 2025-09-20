@@ -161,6 +161,7 @@ Gabriel Agent is an AI-powered personal assistant designed to manage structured 
 - API marketplace
 - **Hybrid Search Capabilities**: Implement keyword and hybrid search functionality to complement existing semantic search, combining vector similarity with traditional full-text search for improved accuracy and user experience
 - **MCP (Model Context Protocol) Integration**: Implement standardized tool interface for AI assistants, enabling dynamic tool discovery and usage through protocols like those demonstrated in [LangConnect-Client](https://github.com/teddynote-lab/LangConnect-Client). This would restructure agent functions into MCP-compatible tools for enhanced AI assistant integration and workflow automation
+- **Automatic Cloud Storage Cleanup Policies**: Implement automated cleanup policies for Google Cloud Storage buckets and Container Registry to prevent accumulation of build artifacts, Docker images, and deployment assets. Include configurable retention periods (e.g., 30 days for images, 7 days for failed builds), cost monitoring alerts, and automated garbage collection to optimize storage costs and maintain system efficiency. This enhancement addresses the ~$50/month potential savings identified during system optimization
 
 ## 8. Success Metrics
 - User adoption rate

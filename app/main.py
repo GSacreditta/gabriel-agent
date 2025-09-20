@@ -48,10 +48,26 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import logging
 import os
+import sys
 import traceback
 import asyncio
 from datetime import datetime, date
 from typing import Dict, Any, Optional, List
+from pathlib import Path
+
+# Ensure proper Python path for production deployment
+def setup_python_path():
+    """Setup Python path for module imports in production."""
+    current_dir = Path(__file__).parent.parent.absolute()  # Project root
+    app_dir = Path(__file__).parent.absolute()  # App directory
+    
+    if str(current_dir) not in sys.path:
+        sys.path.insert(0, str(current_dir))
+    if str(app_dir) not in sys.path:
+        sys.path.insert(0, str(app_dir))
+
+# Setup path before any app imports
+setup_python_path()
 
 # Enhanced Secret Management Import
 try:
@@ -174,7 +190,7 @@ def load_secret_from_manager(secret_name: str, project_id: str = "location-19291
         client = secretmanager.SecretManagerServiceClient()
         name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
         response = client.access_secret_version(request={"name": name})
-        return response.payload.data.decode("UTF-8")
+        return response.payload.data.decode("UTF-8").strip()
     except Exception as e:
         logger.warning(f"Failed to load secret {secret_name}: {e}")
         return None
@@ -194,6 +210,7 @@ def setup_enhanced_secrets():
     logger.info("[SECRETS] Loading secrets from Google Cloud Secret Manager...")
     
     # Map of environment variable names to secret names in Secret Manager
+    # These must match the secret names configured in Cloud Run
     secret_mappings = {
         'OPENAI_API_KEY': 'openai-api-key',
         'SLACK_BOT_TOKEN': 'slack-bot-token',
@@ -201,10 +218,11 @@ def setup_enhanced_secrets():
         'SLACK_APP_TOKEN': 'slack-app-token',
         'GMAIL_CLIENT_SECRET': 'gmail-client-secret',
         'DB_PASSWORD': 'db-password',
-        'DB_HOST': 'db-host',
+        'DB_HOST': 'DB_HOST',  # Secret name matches environment variable name in Cloud Run
         'DB_PORT': 'db-port',
         'DB_NAME': 'db-name',
         'DB_USER': 'db-user'
+        # DB_CONNECTION_NAME is set directly by Cloud Run, not from Secret Manager
     }
     
     # Load configuration from app-config secret (optional)
@@ -304,15 +322,20 @@ async def initialize_services_enhanced():
             service_errors["agent"] = str(e)
             initialization_results["agent"] = False
         
-        # Step 2: Google Drive service
+        # Step 2: Google Drive service (non-blocking - can fail gracefully)
         try:
             from app.services.google_drive import GoogleDriveService
             success = await initialize_service("drive_service", lambda: GoogleDriveService())
             initialization_results["drive_service"] = success
+            if success:
+                logger.info("[SUCCESS] Google Drive service initialized")
+            else:
+                logger.warning("[WARNING] Google Drive service failed - continuing with limited functionality")
         except Exception as e:
-            logger.error(f"Failed to initialize Google Drive service: {e}")
+            logger.warning(f"Google Drive service initialization failed (non-critical): {e}")
             service_errors["drive_service"] = str(e)
             initialization_results["drive_service"] = False
+            # Continue without Google Drive service - other services can still work
         
         # Step 3: OCR service
         try:
@@ -337,7 +360,19 @@ async def initialize_services_enhanced():
         # Step 5: Vector Storage (FAISS) - can fail gracefully
         try:
             from app.services.vector_storage_service import VectorStorageService
-            success = await initialize_service("vector_service", lambda: VectorStorageService())
+            # Initialize with cloud storage settings
+            use_cloud_storage = os.environ.get('FAISS_USE_CLOUD_STORAGE', 'false').lower() == 'true'
+            bucket_name = os.environ.get('FAISS_BUCKET_NAME', 'gabriel-agent-faiss')
+            persist_directory = os.environ.get('FAISS_PERSIST_DIRECTORY', '/app/faiss_db')
+            
+            success = await initialize_service(
+                "vector_service", 
+                lambda: VectorStorageService(
+                    persist_directory=persist_directory,
+                    use_cloud_storage=use_cloud_storage,
+                    bucket_name=bucket_name
+                )
+            )
             initialization_results["vector_service"] = success
         except Exception as e:
             logger.error(f"Failed to initialize Vector Storage service: {e}")
@@ -352,9 +387,13 @@ async def initialize_services_enhanced():
             from app.services.slack_service import SlackService
             slack_service = SlackService()
             if services["agent"]:
+                async def init_slack():
+                    await slack_service.initialize(services["agent"])
+                    return slack_service
+                
                 success = await initialize_service(
                     "slack_service", 
-                    lambda: slack_service.initialize(services["agent"]),
+                    init_slack,
                     dependencies=["agent"]
                 )
             else:
@@ -386,7 +425,7 @@ async def initialize_services_enhanced():
             success = await initialize_service(
                 "document_processor", 
                 init_doc_processor,
-                dependencies=["agent"]  # At minimum need agent
+                dependencies=["agent"]  # Simplified - let it fail gracefully if services missing
             )
             initialization_results["document_processor"] = success
         except Exception as e:
@@ -424,12 +463,15 @@ async def initialize_services_enhanced():
         try:
             from app.services.scheduler_service import SchedulerService
             scheduler = SchedulerService()
-            if services["agent"] and services["slack_service"]:
+            if services["agent"] and services["slack_service"] and services.get("file_discovery") and services.get("agent_coordinator"):
                 async def init_scheduler():
                     await scheduler.initialize(
                         agent=services["agent"],
                         slack_service=services["slack_service"],
-                        file_discovery=services.get("file_discovery")
+                        file_discovery=services.get("file_discovery"),
+                        document_processor=services.get("document_processor"),
+                        drive_service=services.get("drive_service"),
+                        agent_coordinator=services.get("agent_coordinator")
                     )
                     await scheduler.start()
                     return scheduler
@@ -437,10 +479,10 @@ async def initialize_services_enhanced():
                 success = await initialize_service(
                     "scheduler_service",
                     init_scheduler,
-                    dependencies=["agent", "slack_service"]
+                    dependencies=["agent", "slack_service", "file_discovery", "agent_coordinator"]
                 )
             else:
-                logger.warning("Scheduler service requires agent and slack_service")
+                logger.warning("Scheduler service requires agent, slack_service, file_discovery, and agent_coordinator")
                 success = False
             initialization_results["scheduler_service"] = success
         except Exception as e:
@@ -459,7 +501,20 @@ async def initialize_services_enhanced():
                 start_result = await agent_coordinator.start_coordinator()
                 if start_result.get("status") != "success":
                     raise Exception(f"Agent Coordinator startup failed: {start_result}")
-                
+
+                # Connect VectorStorageService to Storage Agent (UNIFIED ARCHITECTURE)
+                if services.get("vector_service") and agent_coordinator:
+                    logger.info("🔗 Injecting FAISS VectorStorageService into Storage Agent...")
+                    try:
+                        storage_agent = agent_coordinator.agent_instances.get("STORAGE_AGENT")
+                        if storage_agent:
+                            storage_agent.set_vector_service(services["vector_service"])
+                            logger.info("[SUCCESS] Storage Agent → FAISS integration completed!")
+                        else:
+                            logger.warning("[WARNING] Storage Agent not found in coordinator")
+                    except Exception as e:
+                        logger.error(f"[ERROR] Failed to inject vector service: {e}")
+
                 # Connect Slack service to HDL Agent if both available
                 if services.get("slack_service") and agent_coordinator:
                     logger.info("🔗 Connecting Slack service to HDL Agent...")
@@ -468,7 +523,30 @@ async def initialize_services_enhanced():
                         logger.info("[SUCCESS] HDL Agent → Slack integration completed!")
                     else:
                         logger.error("[ERROR] Failed to connect Slack service to HDL Agent")
-                
+
+                # Inject agent coordinator into AgentQueryTool for performance optimization
+                if services.get("agent") and agent_coordinator:
+                    try:
+                        logger.info("🔗 Injecting Agent Coordinator into AgentQueryTool for direct communication...")
+                        # Access the agent's tools and find tools that need agent coordinator
+                        agent_executor = services["agent"].agent_executor
+                        if hasattr(agent_executor, 'tools'):
+                            for tool in agent_executor.tools:
+                                if hasattr(tool, 'set_agent_coordinator'):
+                                    tool.set_agent_coordinator(agent_coordinator)
+                                    logger.info(f"[SUCCESS] {tool.__class__.__name__} → Agent Coordinator injection completed!")
+                    except Exception as e:
+                        logger.error(f"[ERROR] Failed to inject agent coordinator into tools: {e}")
+
+                # Inject Google Drive service into OCR service for file access
+                if services.get("drive_service") and services.get("ocr_service"):
+                    try:
+                        logger.info("🔗 Injecting Google Drive service into OCR service...")
+                        services["ocr_service"].set_drive_service(services["drive_service"])
+                        logger.info("[SUCCESS] OCR Service → Google Drive integration completed!")
+                    except Exception as e:
+                        logger.error(f"[ERROR] Failed to inject drive service into OCR: {e}")
+
                 return agent_coordinator
             
             success = await initialize_service("agent_coordinator", init_agent_coordinator)
@@ -528,16 +606,11 @@ async def startup_event():
         logger.warning("[WARNING] Continuing with environment variables only")
     
     # In Cloud Run, service account authentication is automatic
-    # Only set credentials path for local development
-    if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") and os.path.exists("config"):
-        credentials_path = os.path.join(os.getcwd(), "config", "credentials", "location-19291-fb284eccae8d.json")
-        if os.path.exists(credentials_path):
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
-            logger.info(f"Set GOOGLE_APPLICATION_CREDENTIALS to: {credentials_path}")
-        else:
-            logger.info("Running in Cloud Run - using service account authentication")
+    # Cloud-native authentication - no local fallbacks
+    if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        logger.info("No GOOGLE_APPLICATION_CREDENTIALS set - using Cloud Run service account authentication")
     else:
-        logger.info("Using existing GOOGLE_APPLICATION_CREDENTIALS or Cloud Run service account")
+        logger.info("Using configured GOOGLE_APPLICATION_CREDENTIALS")
     
     logger.info(f"GOOGLE_APPLICATION_CREDENTIALS: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'Using service account')}")
     logger.info(f"Current working directory: {os.getcwd()}")
@@ -625,6 +698,75 @@ async def root():
         "status": "healthy",
         "version": "0.2.0"
     }
+
+@app.get("/debug/agent-status")
+async def debug_agent_status():
+    """Debug endpoint to check agent and coordinator status"""
+    try:
+        status = {
+            "agent_service": services.get("agent") is not None,
+            "agent_coordinator": services.get("agent_coordinator") is not None,
+            "vector_service": services.get("vector_service") is not None,
+            "storage_agent_available": False,
+            "agent_tools_count": 0,
+            "coordinator_injection_status": "unknown"
+        }
+        
+        # Check agent tools
+        if services.get("agent"):
+            agent_executor = services["agent"].agent_executor
+            if hasattr(agent_executor, 'tools'):
+                status["agent_tools_count"] = len(agent_executor.tools)
+                
+                # Check if tools have agent coordinator
+                for tool in agent_executor.tools:
+                    if hasattr(tool, 'agent_coordinator') and tool.agent_coordinator is not None:
+                        status["coordinator_injection_status"] = "injected"
+                        break
+                else:
+                    status["coordinator_injection_status"] = "not_injected"
+        
+        # Check storage agent
+        if services.get("agent_coordinator"):
+            coordinator = services["agent_coordinator"]
+            if hasattr(coordinator, 'agent_instances'):
+                storage_agent = coordinator.agent_instances.get("STORAGE_AGENT")
+                status["storage_agent_available"] = storage_agent is not None
+                if storage_agent:
+                    status["storage_agent_has_vector_service"] = hasattr(storage_agent, 'vector_service') and storage_agent.vector_service is not None
+        
+        return status
+        
+    except Exception as e:
+        logger.error(f"Error in debug status: {e}")
+        return {"error": str(e)}
+
+@app.post("/manual-scan")
+async def manual_scan():
+    """Manual trigger for folder scan - for testing purposes"""
+    try:
+        if not services.get("agent_coordinator"):
+            return {"status": "error", "message": "Agent coordinator not available"}
+        
+        # Trigger FILE_MANAGEMENT_AGENT to scan files
+        result = await services["agent_coordinator"].route_message(
+            source="MANUAL_SCAN",
+            target="FILE_MANAGEMENT_AGENT",
+            message={
+                "action": "scan_files",
+                "data": {}
+            }
+        )
+        
+        return {
+            "status": "success",
+            "message": "Manual scan triggered",
+            "result": result
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in manual scan: {e}")
+        return {"status": "error", "message": str(e)}
 
 @app.get("/health")
 async def health_check():
@@ -1004,22 +1146,34 @@ async def search_faiss(
         logger.info(f"[FAISS] Searching for: '{query}' (top_k: {top_k})")
         
         # Perform similarity search using vector service
-        search_result = await services["vector_service"].search_documents(
+        search_results = await services["vector_service"].search_documents(
             query=query,
-            top_k=top_k
+            k=top_k
         )
         
-        # Add search metadata
-        if search_result.get("success"):
-            search_result["search_metadata"] = {
-                "query": query,
-                "top_k": top_k,
-                "filters_applied": [k for k, v in locals().items() if k in ["entity_name", "document_type", "date_range"] and v],
-                "timestamp": datetime.utcnow().isoformat(),
-                "search_type": "semantic_search"
+        # Format results properly
+        if isinstance(search_results, list):
+            formatted_results = []
+            for doc in search_results:
+                formatted_results.append({
+                    "content": doc.page_content,
+                    "metadata": doc.metadata
+                })
+            
+            return {
+                "status": "success",
+                "documents": formatted_results,
+                "total_results": len(formatted_results),
+                "search_metadata": {
+                    "query": query,
+                    "top_k": top_k,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "search_type": "semantic_search"
+                }
             }
-        
-        return search_result
+        else:
+            # Handle dict response from search_similar
+            return search_results
         
     except Exception as e:
         logger.error(f"Error performing FAISS search: {e}")

@@ -18,20 +18,34 @@ class GoogleDriveService:
     def __init__(self):
         try:
             self.settings = get_settings()
-            logger.debug(f"Loading credentials from: {self.settings.get_google_credentials_path()}")
             
-            # Initialize service account credentials
-            # Service accounts handle token refresh automatically - no manual refresh needed
-            self.credentials = service_account.Credentials.from_service_account_file(
-                self.settings.get_google_credentials_path(),
-                scopes=['https://www.googleapis.com/auth/drive']
-            )
+            # Use Application Default Credentials for Cloud Run
+            try:
+                from google.auth import default
+                self.credentials, project = default(scopes=['https://www.googleapis.com/auth/drive'])
+                logger.info(f"Using Application Default Credentials for project: {project}")
+            except Exception as adc_error:
+                logger.warning(f"Application Default Credentials failed: {adc_error}")
+                
+                # Fallback to service account file for local development
+                try:
+                    logger.debug(f"Falling back to service account file: {self.settings.get_google_credentials_path()}")
+                    self.credentials = service_account.Credentials.from_service_account_file(
+                        self.settings.get_google_credentials_path(),
+                        scopes=['https://www.googleapis.com/auth/drive']
+                    )
+                    logger.info("Service account file credentials loaded successfully")
+                except Exception as file_error:
+                    logger.error(f"Both ADC and service account file failed: ADC={adc_error}, File={file_error}")
+                    raise ValueError("No valid Google Cloud credentials available")
             
-            # Log service account details
-            logger.info(f"Service Account Email: {self.credentials.service_account_email}")
-            logger.info(f"Project ID: {self.credentials.project_id}")
+            # Log authentication details
+            if hasattr(self.credentials, 'service_account_email'):
+                logger.info(f"Service Account Email: {self.credentials.service_account_email}")
+            if hasattr(self.credentials, 'project_id'):
+                logger.info(f"Project ID: {self.credentials.project_id}")
             
-            logger.debug("Credentials loaded successfully")
+            logger.debug("Google Drive credentials loaded successfully")
             
             # Build the service - Google API client handles token refresh automatically
             self.service = build('drive', 'v3', credentials=self.credentials)

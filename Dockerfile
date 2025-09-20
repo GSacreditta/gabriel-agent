@@ -33,12 +33,18 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies including FAISS
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir faiss-cpu
 
-# Copy application code
-COPY . .
+# Copy application code (excluding .env file for cloud deployments)
+COPY app/ ./app/
+COPY enhanced_main.py ./
+COPY minimal_main.py ./
+COPY requirements.txt ./
+# Remove .env file if it exists (cloud deployments should use environment variables)
+RUN rm -f /app/.env
 
 # Create necessary directories
 RUN mkdir -p /app/faiss_db \
@@ -63,5 +69,5 @@ EXPOSE $PORT
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:$PORT/health || exit 1
 
-# Run the application with incremental service loading
-CMD exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --timeout-keep-alive 30 
+# Run with full Gabriel Agent system
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "info"] 

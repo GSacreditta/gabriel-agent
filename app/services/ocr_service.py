@@ -39,6 +39,7 @@ class OCRService:
     def __init__(self):
         """Initialize the OCR service with Google Cloud Vision client."""
         self.temp_dir = Path(tempfile.mkdtemp(prefix="gabriel_agent_ocr_"))
+        self.drive_service = None  # Will be injected by main.py
         
         if GOOGLE_VISION_AVAILABLE:
             try:
@@ -53,6 +54,10 @@ class OCRService:
             self.client = None
             self.vision_enabled = False
             logger.info("OCR Service initialized without Google Cloud Vision (using PDF text extraction only)")
+
+    def set_drive_service(self, drive_service):
+        """Inject Google Drive service for file access."""
+        self.drive_service = drive_service
     
     async def process_document(self, file_path: str, file_name: str = None, mime_type: str = None) -> Dict[str, Any]:
         """Process a document with OCR and extract structured information.
@@ -242,9 +247,15 @@ class OCRService:
             logger.debug(f"Starting OCR text extraction for file: {file_id}")
             
             # Get file metadata to determine the MIME type
-            from .google_drive import GoogleDriveService
-            drive_service = GoogleDriveService()
-            file_metadata = await drive_service.get_file_metadata(file_id)
+            if not self.drive_service:
+                logger.error("Google Drive service not injected - cannot access files")
+                return {
+                    "success": False,
+                    "error": "Google Drive service not available",
+                    "file_id": file_id
+                }
+            
+            file_metadata = await self.drive_service.get_file_metadata(file_id)
             mime_type = file_metadata.get('mimeType', '')
             file_name = file_metadata.get('name', 'unknown')
             
@@ -473,8 +484,13 @@ class OCRService:
             # Ensure token is valid before making the request
             await self._ensure_valid_token()
             
-            from .google_drive import GoogleDriveService
-            drive_service = GoogleDriveService()
+            if not self.drive_service:
+                logger.error("Google Drive service not injected - cannot download file")
+                return {
+                    "success": False,
+                    "error": "Google Drive service not available"
+                }
+            drive_service = self.drive_service
             return await drive_service.download_file(file_id)
             
         except Exception as e:

@@ -408,6 +408,7 @@ class SlackService:
             if thread_ts:
                 logger.info(f"🧵 Thread reply detected - thread_ts: {thread_ts}")
                 # Get the parent message
+                
                 parent_message = await self.get_message(channel, thread_ts)
                 logger.info(f"📄 Parent message retrieved: {parent_message is not None}")
                 if parent_message:
@@ -858,11 +859,9 @@ class SlackService:
                 await self.send_message(response_text, channel=channel)
                 return
             
-            # 🔥 NEW: Greetings and polite responses
-            elif is_relevant_question and any(keyword in text_lower for keyword in [
-                "hello", "hi", "hey", "thanks", "thank you", "got it", "okay"
-            ]):
-                logger.info(f"🎯 Handling greeting/polite response: {text}")
+            # 🔥 NEW: Greetings and polite responses (ONLY for simple greetings)
+            elif text_lower.strip() in ["hello", "hi", "hey", "thanks", "thank you", "got it", "okay"]:
+                logger.info(f"🎯 Handling simple greeting: {text}")
                 if any(word in text_lower for word in ["thank", "thanks"]):
                     response_text = "You're welcome! 😊 Anything else I can help you with?"
                 elif any(word in text_lower for word in ["hello", "hi", "hey"]):
