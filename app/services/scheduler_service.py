@@ -230,6 +230,31 @@ class SchedulerService:
             logger.warning(f"Error checking processed files: {e}")
             return False  # If we can't check, assume not processed
 
+    async def _process_via_agent_coordinator(self, file_id: str, file_data: dict) -> dict:
+        """Process document using the proper Agent Coordinator workflow"""
+        try:
+            file_name = file_data["name"]
+            logger.info(f"Processing {file_name} via Agent Coordinator workflow...")
+            
+            # Use the Agent Coordinator's document processing workflow
+            result = await self.agent_coordinator.process_document_workflow({
+                "file_id": file_id,
+                "file_name": file_name,
+                "file_data": file_data,
+                "source": "SCHEDULER_SERVICE"
+            })
+            
+            if result.get("status") == "success":
+                logger.info(f"Agent Coordinator workflow completed for: {file_name}")
+                return {"success": True, "workflow_result": result}
+            else:
+                logger.error(f"Agent Coordinator workflow failed for {file_name}: {result}")
+                return {"success": False, "error": result.get("message", "Unknown error")}
+                
+        except Exception as e:
+            logger.error(f"Error in Agent Coordinator workflow for {file_name}: {e}")
+            return {"success": False, "error": str(e)}
+
     async def _process_document_complete_workflow(self, file_id: str, file_data: dict) -> dict:
         """Complete document processing workflow - BUT WAIT for HDL approval before moving files"""
         try:
@@ -712,7 +737,9 @@ File will remain in master folder until approved."""
             logger.error(f"Error updating entity folder ID: {str(e)}")
 
     async def extract_images(self, file_id: str) -> List[Dict[str, Any]]:
-        doc = fitz.open(temp_file)
+        # This method needs implementation - placeholder for now
+        return []
+        # doc = fitz.open(temp_file)  # temp_file not defined - needs proper implementation
         images = []
         
         for page_num in range(doc.page_count):
