@@ -459,38 +459,7 @@ async def initialize_services_enhanced():
             service_errors["file_discovery"] = str(e)
             initialization_results["file_discovery"] = False
         
-        # Step 9: Scheduler service (depends on multiple services)
-        try:
-            from app.services.scheduler_service import SchedulerService
-            scheduler = SchedulerService()
-            if services["agent"] and services["slack_service"] and services.get("file_discovery") and services.get("agent_coordinator"):
-                async def init_scheduler():
-                    await scheduler.initialize(
-                        agent=services["agent"],
-                        slack_service=services["slack_service"],
-                        file_discovery=services.get("file_discovery"),
-                        document_processor=services.get("document_processor"),
-                        drive_service=services.get("drive_service"),
-                        agent_coordinator=services.get("agent_coordinator")
-                    )
-                    await scheduler.start()
-                    return scheduler
-                
-                success = await initialize_service(
-                    "scheduler_service",
-                    init_scheduler,
-                    dependencies=["agent", "slack_service", "file_discovery", "agent_coordinator"]
-                )
-            else:
-                logger.warning("Scheduler service requires agent, slack_service, file_discovery, and agent_coordinator")
-                success = False
-            initialization_results["scheduler_service"] = success
-        except Exception as e:
-            logger.error(f"Failed to initialize Scheduler service: {e}")
-            service_errors["scheduler_service"] = str(e)
-            initialization_results["scheduler_service"] = False
-        
-        # Phase 3: Initialize Agent Coordinator (orchestrates all agents)
+        # Phase 3: Initialize Agent Coordinator FIRST (orchestrates all agents)
         logger.info("[PHASE] Phase 3: Initializing Agent Coordinator...")
         
         try:
@@ -556,6 +525,37 @@ async def initialize_services_enhanced():
             logger.error(f"Failed to initialize Agent Coordinator: {e}")
             service_errors["agent_coordinator"] = str(e)
             initialization_results["agent_coordinator"] = False
+        
+        # Step 9: Scheduler service (depends on Agent Coordinator - now available)
+        try:
+            from app.services.scheduler_service import SchedulerService
+            scheduler = SchedulerService()
+            if services["agent"] and services["slack_service"] and services.get("file_discovery") and services.get("agent_coordinator"):
+                async def init_scheduler():
+                    await scheduler.initialize(
+                        agent=services["agent"],
+                        slack_service=services["slack_service"],
+                        file_discovery=services.get("file_discovery"),
+                        document_processor=services.get("document_processor"),
+                        drive_service=services.get("drive_service"),
+                        agent_coordinator=services.get("agent_coordinator")
+                    )
+                    await scheduler.start()
+                    return scheduler
+                
+                success = await initialize_service(
+                    "scheduler_service",
+                    init_scheduler,
+                    dependencies=["agent", "slack_service", "file_discovery", "agent_coordinator"]
+                )
+            else:
+                logger.warning("Scheduler service requires agent, slack_service, file_discovery, and agent_coordinator")
+                success = False
+            initialization_results["scheduler_service"] = success
+        except Exception as e:
+            logger.error(f"Failed to initialize Scheduler service: {e}")
+            service_errors["scheduler_service"] = str(e)
+            initialization_results["scheduler_service"] = False
         
         # Phase 4: Initialize additional services (optional)
         logger.info("[PHASE] Phase 4: Initializing additional services...")
