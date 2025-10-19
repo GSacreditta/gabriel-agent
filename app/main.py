@@ -7,7 +7,8 @@ from the original main.py with improvements and comprehensive documentation.
 IMPLEMENTATION PROGRESS:
 [SUCCESS] Service initialization with enhanced error handling and dependency management
 [SUCCESS] Agent Coordinator integration with all specialized agents (DB, HDL, Extraction, Storage, FileManagement)
-[SUCCESS] Pydantic models for API requests/responses
+[SUCCESS] Pydantic models for API requests/responses with comprehensive validation
+[SUCCESS] Agent message validation with AgentType enum, action format validation, and payload size limits
 [SUCCESS] Agent API endpoints (/agents/status, /agents/capabilities, /agents/message)
 [SUCCESS] Entity management endpoints (/entities CRUD operations)
 [SUCCESS] Document processing endpoints (/extraction/extract-document, /extraction/process-email)
@@ -25,6 +26,7 @@ ENHANCEMENTS OVER ORIGINAL:
 - Enhanced metadata in API responses
 - Graceful degradation when services fail
 - Comprehensive health checking and debugging endpoints
+- Pydantic validation for agent messages with enum types and payload limits
 
 ARCHITECTURE:
 - Agent Coordinator orchestrates 5 specialized agents:
@@ -45,15 +47,17 @@ Version: 0.2.0 Enhanced
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 import logging
 import os
 import sys
 import traceback
 import asyncio
+import json
 from datetime import datetime, date
 from typing import Dict, Any, Optional, List
 from pathlib import Path
+from enum import Enum
 
 # Ensure proper Python path for production deployment
 def setup_python_path():
@@ -89,6 +93,14 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # PYDANTIC MODELS - Enhanced Request/Response Models
 # ============================================================================
+
+class AgentType(str, Enum):
+    """Enum for valid agent types in the system."""
+    DB_AGENT = "DB_AGENT"
+    FILE_MANAGEMENT_AGENT = "FILE_MANAGEMENT_AGENT"
+    EXTRACTION_AGENT = "EXTRACTION_AGENT"
+    STORAGE_AGENT = "STORAGE_AGENT"
+    HDL_AGENT = "HDL_AGENT"
 
 class ChatRequest(BaseModel):
     message: str
@@ -126,9 +138,25 @@ class TaskCreateRequest(BaseModel):
     frequency: Optional[str] = None
 
 class AgentMessageRequest(BaseModel):
-    agent_type: str
-    action: str
-    data: Dict[str, Any] = {}
+    """
+    Validated request model for agent messages.
+    
+    Enforces:
+    - Valid agent type from AgentType enum
+    - Action format validation (lowercase with underscores)
+    - Data payload size limit (1MB)
+    """
+    agent_type: AgentType
+    action: str = Field(..., regex="^[a-z_]+$", description="Action name in lowercase with underscores")
+    data: Dict[str, Any] = Field(default_factory=dict, description="Action data payload")
+    
+    @validator('data')
+    def validate_data_size(cls, v):
+        """Validate that data payload doesn't exceed 1MB."""
+        payload_size = len(json.dumps(v))
+        if payload_size > 1_000_000:  # 1MB limit
+            raise ValueError(f"Data payload too large: {payload_size} bytes (max 1MB)")
+        return v
 
 class AgentResponse(BaseModel):
     status: str
@@ -864,11 +892,12 @@ async def send_agent_message(request: AgentMessageRequest):
         if not services.get("agent_coordinator"):
             raise HTTPException(status_code=503, detail="Agent Coordinator not initialized")
         
-        logger.info(f"[MESSAGE] Routing message to {request.agent_type}: {request.action}")
+        agent_type_str = request.agent_type.value
+        logger.info(f"[MESSAGE] Routing message to {agent_type_str}: {request.action}")
         
         response = await services["agent_coordinator"].route_message(
             source="API_ENHANCED",
-            target=request.agent_type,
+            target=agent_type_str,
             message={
                 "action": request.action,
                 "data": request.data,
@@ -877,17 +906,18 @@ async def send_agent_message(request: AgentMessageRequest):
             }
         )
         
-        logger.info(f"📥 Response from {request.agent_type}: {response.get('status', 'unknown')}")
+        logger.info(f"📥 Response from {agent_type_str}: {response.get('status', 'unknown')}")
         
         return AgentResponse(
             status=response.get("status", "unknown"),
             result=response.get("result"),
             message=response.get("message"),
-            agent_type=request.agent_type
+            agent_type=agent_type_str
         )
         
     except Exception as e:
-        logger.error(f"Error sending message to {request.agent_type}: {e}")
+        agent_type_str = request.agent_type.value if hasattr(request.agent_type, 'value') else str(request.agent_type)
+        logger.error(f"Error sending message to {agent_type_str}: {e}")
         logger.error(f"Traceback: {''.join(traceback.format_exception(type(e), e, e.__traceback__))}")
         raise HTTPException(status_code=500, detail=str(e))
 
