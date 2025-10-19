@@ -1205,9 +1205,17 @@ async def store_in_faiss(
                 **(metadata or {})
             }
         }]
-        
-        # Store documents using vector service
-        store_result = await services["vector_service"].add_documents(documents)
+
+        # Compute embeddings and store using vector service
+        texts = [doc["text"] for doc in documents]
+        metadata_list = [doc["metadata"] for doc in documents]
+        embeddings = await services["vector_service"].embeddings.aembed_documents(texts)
+
+        store_result = await services["vector_service"].add_documents(
+            documents=documents,
+            embeddings=embeddings,
+            metadata=metadata_list
+        )
         
         # Add storage metadata
         if store_result.get("success"):
