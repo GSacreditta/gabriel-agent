@@ -1,7 +1,7 @@
 # Gabriel Agent - Product Requirements Document (PRD)
 
 ## 1. Product Overview
-Gabriel Agent is an AI-powered personal assistant designed to manage structured tasks, reminders, and file-based workflows. The system leverages advanced AI capabilities to process documents, organize information, and provide intelligent task management. The agent uses LangChain, ChromaDB for vector storage, and OpenAI to create a powerful document processing and task management system. The primary interface is through Slack, which serves both as the user interface and the Human-Device Interface (HDI).
+Gabriel Agent is an AI-powered personal assistant designed to manage structured tasks, reminders, and file-based workflows. The system leverages advanced AI capabilities to process documents, organize information, and provide intelligent task management. The agent uses LangChain, FAISS for vector storage, and OpenAI to create a powerful document processing and task management system. The primary interface is through Slack, which serves both as the user interface and the Human-Device Interface (HDI).
 
 ## 2. Target Users
 - Professionals managing multiple documents and tasks
@@ -24,7 +24,7 @@ Gabriel Agent is an AI-powered personal assistant designed to manage structured 
 - Automated document categorization
 - Document relationship mapping
 - Content-based search and retrieval
-- Vector embeddings storage in ChromaDB
+- Vector embeddings storage in FAISS
 - Document chunking and processing
 
 ### 3.2 File Organization
@@ -68,7 +68,7 @@ Gabriel Agent is an AI-powered personal assistant designed to manage structured 
 ### 3.5 AI Integration
 - LangChain-based processing
 - OpenAI API integration
-- ChromaDB vector storage
+- FAISS vector storage
 - Semantic search capabilities
 - Context-aware processing
 - Natural language understanding
@@ -94,7 +94,7 @@ Gabriel Agent is an AI-powered personal assistant designed to manage structured 
 
 ### 4.2 External Dependencies
 - Google Cloud API
-- ChromaDB (Vector Database)
+- FAISS (Vector Database)
 - OpenAI API (LangChain)
 - PDF processing libraries
 - File system management
@@ -186,7 +186,7 @@ Gabriel Agent is an AI-powered personal assistant designed to manage structured 
 - Basic security features
 - Essential API integrations
 - Initial testing framework
-- ChromaDB vector storage
+- FAISS vector storage
 - Google Drive integration
 
 ### Phase 2: Enhancement
@@ -261,7 +261,7 @@ The system will migrate from service-based to tool-based agent architecture to e
 #### 12.2.3 Storage Agent (Vector) (As Proposed)
 - **Input:** Receives chunked text + metadata from Extraction Agent
 - **Embedding Generation:** Generates embeddings internally (optimal for vector DB)
-- **Database Management:** Manages ChromaDB collections and optimal storage structure
+- **Database Management:** Manages FAISS indices and optimal storage structure
 - **Search Services:** Provides similarity search capabilities to other agents
 - **Metadata:** Uses extraction fields defined in document_processor.py
 - **Similarity Analysis:** On-demand trigger when other agents request it
