@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engin
 from sqlalchemy import text
 
 from ...models.database_models import Base
+from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,23 +26,38 @@ class DatabaseService:
     async def initialize(self) -> bool:
         """Initialize database connection"""
         try:
-            # Build connection string from environment variables
-            db_host = os.getenv('DB_HOST', 'localhost')
-            db_port = os.getenv('DB_PORT', '5432')
-            db_name = os.getenv('DB_NAME', 'gabriel_agent')
-            db_user = os.getenv('DB_USER', 'postgres')
-            db_password = os.getenv('DB_PASSWORD', '')
+            # Get settings (which may include secrets from Secret Manager)
+            settings = get_settings()
             
-            # For Cloud SQL, check for connection name (Unix socket)
-            db_connection_name = os.getenv('DB_CONNECTION_NAME')
+            # Use settings instead of direct environment variables
+            from urllib.parse import quote_plus
+            
+            db_host = settings.DB_HOST
+            db_port = settings.DB_PORT
+            db_name = settings.DB_NAME
+            db_user = settings.DB_USER
+            db_password = settings.DB_PASSWORD.get_secret_value() if hasattr(settings.DB_PASSWORD, 'get_secret_value') else str(settings.DB_PASSWORD)
+            db_connection_name = settings.DB_CONNECTION_NAME
+            
+            # Log configuration (without exposing password)
+            logger.info(f"Database config - Host: {db_host}, Port: {db_port}, DB: {db_name}, User: {db_user}, "
+                       f"Connection Name: {db_connection_name}, Password length: {len(str(db_password))}")
+            logger.debug(f"DB_HOST from env: {os.environ.get('DB_HOST', 'NOT SET')}")
+            logger.debug(f"DB_USER from env: {os.environ.get('DB_USER', 'NOT SET')}")
+            logger.debug(f"DB_NAME from env: {os.environ.get('DB_NAME', 'NOT SET')}")
+            logger.debug(f"USE_SECRET_MANAGER: {os.environ.get('USE_SECRET_MANAGER', 'NOT SET')}")
+            
+            # URL-encode password to handle special characters like @
+            db_password_encoded = quote_plus(str(db_password))
+            db_user_encoded = quote_plus(str(db_user))
             
             if db_connection_name:
                 # Cloud SQL using Unix socket
-                connection_string = f"postgresql+asyncpg://{db_user}:{db_password}@/{db_name}?host=/cloudsql/{db_connection_name}"
+                connection_string = f"postgresql+asyncpg://{db_user_encoded}:{db_password_encoded}@/{db_name}?host=/cloudsql/{db_connection_name}"
                 logger.info(f"Using Cloud SQL connection: {db_connection_name}")
             else:
                 # Standard PostgreSQL connection
-                connection_string = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+                connection_string = f"postgresql+asyncpg://{db_user_encoded}:{db_password_encoded}@{db_host}:{db_port}/{db_name}"
                 logger.info(f"Using PostgreSQL connection: {db_host}:{db_port}/{db_name}")
             
             # Create async engine with connection pooling
@@ -70,7 +86,15 @@ class DatabaseService:
             return True
             
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             logger.error(f"❌ Failed to initialize database service: {e}")
+            logger.error(f"Error details: {error_details}")
+            logger.error(f"Connection config - Host: {db_host if 'db_host' in locals() else 'N/A'}, "
+                        f"Port: {db_port if 'db_port' in locals() else 'N/A'}, "
+                        f"DB: {db_name if 'db_name' in locals() else 'N/A'}, "
+                        f"User: {db_user if 'db_user' in locals() else 'N/A'}, "
+                        f"Connection Name: {db_connection_name if 'db_connection_name' in locals() else 'N/A'}")
             self.engine = None
             self.session_maker = None
             self._initialized = False

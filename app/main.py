@@ -47,7 +47,7 @@ Version: 0.2.0 Enhanced
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 import logging
 import os
 import sys
@@ -147,10 +147,11 @@ class AgentMessageRequest(BaseModel):
     - Data payload size limit (1MB)
     """
     agent_type: AgentType
-    action: str = Field(..., regex="^[a-z_]+$", description="Action name in lowercase with underscores")
+    action: str = Field(..., pattern="^[a-z_]+$", description="Action name in lowercase with underscores")
     data: Dict[str, Any] = Field(default_factory=dict, description="Action data payload")
     
-    @validator('data')
+    @field_validator('data')
+    @classmethod
     def validate_data_size(cls, v):
         """Validate that data payload doesn't exceed 1MB."""
         payload_size = len(json.dumps(v))
@@ -282,16 +283,22 @@ def setup_enhanced_secrets():
     except Exception as e:
         logger.error(f"Failed to load Google credentials from Secret Manager: {e}")
     
-    # Load individual secrets
+    # Load individual secrets (only if not already set by Cloud Run secretKeyRef)
     secrets_loaded = 0
     for env_var, secret_name in secret_mappings.items():
+        # Check if already set (Cloud Run provides via secretKeyRef)
+        if os.environ.get(env_var):
+            logger.debug(f"[INFO] {env_var} already set from Cloud Run secretKeyRef, skipping Secret Manager API load")
+            secrets_loaded += 1
+            continue
+            
         secret_value = load_secret_from_manager(secret_name)
         if secret_value:
             os.environ[env_var] = secret_value
             secrets_loaded += 1
-            logger.info(f"[SUCCESS] Loaded {env_var} from Secret Manager (length: {len(secret_value)})")
+            logger.info(f"[SUCCESS] Loaded {env_var} from Secret Manager API (length: {len(secret_value)})")
         else:
-            logger.warning(f"[WARNING] Failed to load {env_var} from secret {secret_name}")
+            logger.warning(f"[WARNING] Failed to load {env_var} from secret {secret_name} (may be set via secretKeyRef)")
     
     logger.info(f"[SECRETS] Secret Manager: Loaded {secrets_loaded}/{len(secret_mappings)} secrets successfully")
 
@@ -558,7 +565,12 @@ async def initialize_services_enhanced():
         try:
             from app.services.scheduler_service import SchedulerService
             scheduler = SchedulerService()
-            if services["agent"] and services["slack_service"] and services.get("file_discovery") and services.get("agent_coordinator"):
+            if (
+                services["agent"]
+                and services["slack_service"]
+                and services.get("agent_coordinator")
+                and services.get("drive_service")
+            ):
                 async def init_scheduler():
                     await scheduler.initialize(
                         agent=services["agent"],
@@ -574,10 +586,10 @@ async def initialize_services_enhanced():
                 success = await initialize_service(
                     "scheduler_service",
                     init_scheduler,
-                    dependencies=["agent", "slack_service", "file_discovery", "agent_coordinator"]
+                    dependencies=["agent", "slack_service", "agent_coordinator", "drive_service"]
                 )
             else:
-                logger.warning("Scheduler service requires agent, slack_service, file_discovery, and agent_coordinator")
+                logger.warning("Scheduler service requires agent, slack_service, agent_coordinator, and drive_service")
                 success = False
             initialization_results["scheduler_service"] = success
         except Exception as e:
@@ -620,7 +632,7 @@ async def initialize_services_enhanced():
 async def startup_event():
     """Enhanced startup with comprehensive service loading and detailed reporting"""
     logger.info("🚀 Gabriel Agent Enhanced - Starting up...")
-    logger.info(f"Port: {os.environ.get('PORT', '8080')}")
+    logger.info(f"Port: {os.environ.get('PORT', '8081')}")
     logger.info(f"Project: {os.environ.get('GOOGLE_CLOUD_PROJECT', 'not set')}")
     logger.info(f"Secret Manager: {os.environ.get('USE_SECRET_MANAGER', 'false')}")
     
@@ -628,7 +640,23 @@ async def startup_event():
     logger.info("[PHASE] Phase 0: Setting up enhanced secret management...")
     try:
         setup_enhanced_secrets()
-        logger.info("[SUCCESS] Secret management setup completed")
+        # Clear get_settings cache after loading secrets to ensure fresh values
+        from app.core.config import get_settings
+        get_settings.cache_clear()
+        
+        # Ensure DB_CONNECTION_NAME is set (required for Cloud SQL Unix socket)
+        # Cloud Run sets this via --set-env-vars in cloudbuild.yaml, but verify it exists
+        if not os.environ.get('DB_CONNECTION_NAME'):
+            # Try to derive from Cloud SQL instance if not set
+            # Format: project:region:instance
+            project_id = os.environ.get('GOOGLE_CLOUD_PROJECT', 'location-19291')
+            db_connection = f"{project_id}:us-east1:gabriel-agent-db"
+            os.environ['DB_CONNECTION_NAME'] = db_connection
+            logger.info(f"[INFO] Set DB_CONNECTION_NAME from default: {db_connection}")
+        else:
+            logger.info(f"[INFO] DB_CONNECTION_NAME already set: {os.environ.get('DB_CONNECTION_NAME')}")
+        
+        logger.info("[SUCCESS] Secret management setup completed - settings cache cleared")
     except Exception as e:
         logger.error(f"[ERROR] Secret management setup failed: {e}")
         logger.warning("[WARNING] Continuing with environment variables only")
@@ -642,6 +670,22 @@ async def startup_event():
     
     logger.info(f"GOOGLE_APPLICATION_CREDENTIALS: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', 'Using service account')}")
     logger.info(f"Current working directory: {os.getcwd()}")
+    
+    # CRITICAL: Initialize database service FIRST before anything else
+    logger.info("[CRITICAL] Initializing database service...")
+    try:
+        from app.core.database.service import get_database_service
+        db_service = await get_database_service()
+        if db_service.is_initialized:
+            logger.info("[SUCCESS] ✅ Database service initialized successfully")
+        else:
+            logger.error("[CRITICAL] ❌ Database service failed to initialize - continuing without database")
+            logger.error("[CRITICAL] The application will start but database operations will fail")
+    except Exception as e:
+        logger.error(f"[CRITICAL] ❌ Database initialization error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        logger.error("[CRITICAL] Continuing startup without database - operations will fail")
     
     # Initialize services with enhanced error handling
     results = await initialize_services_enhanced()
@@ -802,7 +846,7 @@ async def health_check():
     return {
         "status": "healthy",
         "message": "Gabriel Agent Enhanced is running successfully",
-        "port": os.environ.get('PORT', '8080'),
+        "port": os.environ.get('PORT', '8081'),
         "project": os.environ.get('GOOGLE_CLOUD_PROJECT', 'not set'),
         "services": {
             name: service is not None 
@@ -1479,5 +1523,5 @@ async def get_file_inventory():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get('PORT', 8080))
+    port = int(os.environ.get('PORT', 8081))
     uvicorn.run(app, host="0.0.0.0", port=port) 

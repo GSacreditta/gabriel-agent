@@ -31,6 +31,10 @@ class BaseAgent(ABC):
         """Execute a specific task"""
         pass
     
+    async def receive_message(self, source_agent: str, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Receive and handle messages from other agents"""
+        return await self.handle_message(source_agent, message)
+    
     def log_activity(self, activity: str, details: Dict[str, Any] = None):
         """Log agent activity"""
         log_entry = {
@@ -49,3 +53,7 @@ class BaseAgent(ABC):
     def clear_activity_log(self):
         """Clear activity log"""
         self.activity_log.clear()
+    
+    def set_coordinator(self, coordinator):
+        """Set the agent coordinator reference"""
+        self.coordinator = coordinator

@@ -998,3 +998,19 @@ class DBAgent(BaseAgent):
         # Cleanup logic would go here (e.g., remove old temp records)
         
         return {"status": "completed", "message": "Data cleanup completed"}
+    
+    def connect_agent(self, agent_type: str, agent_instance):
+        """Connect to another agent (required by coordinator)"""
+        # DBAgent doesn't need to connect to other agents directly
+        pass
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """Perform health check (required by coordinator)"""
+        try:
+            # Check database connection
+            if await self.ensure_database_connection(strict=False):
+                return {"status": "healthy", "message": "Database connection OK"}
+            else:
+                return {"status": "unhealthy", "message": "Database connection failed"}
+        except Exception as e:
+            return {"status": "unhealthy", "message": f"Health check failed: {e}"}
