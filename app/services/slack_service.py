@@ -526,11 +526,29 @@ class SlackService:
                                                         thread_ts=thread_ts
                                                     )
                                             else:
+                                                # Better error message for "Review request not found"
+                                                error_msg = completion_result.get('message', 'Unknown error')
+                                                details = completion_result.get('details', {})
+                                                
+                                                error_response = f"❌ **Error Processing Response**\n\n"
+                                                error_response += f"**Request ID:** `{request_id}`\n"
+                                                error_response += f"**Error:** {error_msg}\n\n"
+                                                
+                                                if "not found" in error_msg.lower():
+                                                    error_response += (
+                                                        "**What this means:**\n"
+                                                        "This review request may have:\n"
+                                                        "• Expired (requests are valid for a limited time)\n"
+                                                        "• Already been processed\n"
+                                                        "• Been lost due to an application restart\n\n"
+                                                        "**What to do:**\n"
+                                                        "Please request a new review if this action is still needed."
+                                                    )
+                                                else:
+                                                    error_response += f"_Response recorded but may need manual review._"
+                                                
                                                 await self.send_message(
-                                                    f"⚠️ **Processing Warning**\n" +
-                                                    f"**Request ID:** `{request_id}`\n" +
-                                                    f"**Issue:** {completion_result.get('message', 'Unknown error')}\n" +
-                                                    f"**Status:** Response recorded but may need manual review",
+                                                    error_response,
                                                     channel=channel,
                                                     thread_ts=thread_ts
                                                 )

@@ -26,10 +26,36 @@ class HDLAgent(BaseAgent):
         # Timeout configuration
         self.review_timeout_hours = 12
         
+        # Initialization flag
+        self._initialized = False
+        
     def set_slack_service(self, slack_service):
         """Set the Slack service for sending messages"""
         self.slack_service = slack_service
         self.logger.info("Slack service connected to HDL Agent")
+    
+    async def initialize_agent(self):
+        """Initialize HDL Agent - ensure database tables and restore pending reviews"""
+        if self._initialized:
+            self.logger.info("HDL Agent already initialized")
+            return
+        
+        try:
+            self.logger.info("🚀 Initializing HDL Agent...")
+            
+            # Ensure database table exists
+            await self._ensure_hdl_reviews_table()
+            
+            # Restore any pending reviews from database (in case of restart)
+            await self.restore_pending_reviews()
+            
+            self._initialized = True
+            self.logger.info("✅ HDL Agent initialization complete")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error initializing HDL Agent: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
     
     def connect_agent(self, agent_type: str, agent_instance):
         """Connect to another agent"""
@@ -132,7 +158,8 @@ class HDLAgent(BaseAgent):
         """Load review data from database"""
         try:
             if not self.coordinator:
-                self.logger.warning("No coordinator available for database access")
+                self.logger.error(f"❌ Cannot load review {request_id}: No coordinator available")
+                self.logger.error("HDL Agent not properly initialized - coordinator missing")
                 return None
                 
             # Query DB agent for the review
@@ -149,8 +176,8 @@ class HDLAgent(BaseAgent):
                 }
             })
             
-            if db_result.get('status') == 'success' and db_result.get('result'):
-                rows = db_result['result']
+            if db_result.get('status') == 'success':
+                rows = db_result.get('result', [])
                 if rows:
                     row = rows[0]
                     review_data = {
@@ -165,12 +192,19 @@ class HDLAgent(BaseAgent):
                     }
                     self.logger.info(f"✅ Review loaded from DB: {request_id}")
                     return review_data
-                    
-            self.logger.warning(f"⚠️ Review not found in DB: {request_id}")
-            return None
+                else:
+                    self.logger.warning(f"⚠️ Review {request_id} not found in database (query returned no rows)")
+                    return None
+            else:
+                error_msg = db_result.get('message', 'Unknown database error')
+                self.logger.error(f"❌ Database query failed for {request_id}: {error_msg}")
+                self.logger.error(f"DB Result: {db_result}")
+                return None
             
         except Exception as e:
-            self.logger.error(f"Error loading review from DB: {e}")
+            self.logger.error(f"❌ Exception loading review {request_id} from DB: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return None
     
     async def _ensure_hdl_reviews_table(self):
@@ -299,21 +333,44 @@ _I understand natural language, so just respond however feels natural to you!_ �
             request_id = response_data.get('request_id')
             human_decision = response_data.get('decision')  # approve, reject
             
+            self.logger.info(f"📨 Processing human response for request {request_id}: {human_decision}")
+            
             # First try to find in memory
             review_data = self.pending_reviews.get(request_id)
+            found_in_memory = review_data is not None
             
             # If not in memory, try loading from database
             if not review_data:
-                self.logger.info(f"🔍 Review not in memory, loading from DB: {request_id}")
+                self.logger.info(f"🔍 Review {request_id} not in memory, attempting database lookup...")
                 review_data = await self._load_review_from_db(request_id)
                 
                 if review_data:
                     # Add back to memory for processing
                     self.pending_reviews[request_id] = review_data
-                    self.logger.info(f"✅ Review restored from DB to memory: {request_id}")
+                    self.logger.info(f"✅ Review {request_id} restored from DB to memory")
+                else:
+                    self.logger.error(f"❌ Review {request_id} not found in database either")
                 
             if not review_data:
-                return {"status": "error", "message": "Review request not found"}
+                # Provide detailed error message
+                from datetime import datetime
+                error_details = {
+                    "request_id": request_id,
+                    "checked_memory": True,
+                    "found_in_memory": found_in_memory,
+                    "checked_database": True,
+                    "coordinator_available": self.coordinator is not None,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                
+                self.logger.error(f"❌ Review request {request_id} not found. Details: {error_details}")
+                
+                return {
+                    "status": "error", 
+                    "message": "Review request not found. This request may have expired, been already processed, or the application may have restarted. Please request a new review if needed.",
+                    "details": error_details,
+                    "request_id": request_id
+                }
             
             review_data['status'] = human_decision
             review_data['human_response'] = response_data

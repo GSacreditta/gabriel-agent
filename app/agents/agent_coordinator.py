@@ -88,6 +88,19 @@ class AgentCoordinator:
                     "capabilities": await agent_instance.get_capabilities()
                 }
             
+            # Initialize HDL Agent with database tables and restore pending reviews
+            logger.info("Initializing HDL Agent with database persistence...")
+            try:
+                hdl_agent = self.agent_instances.get("HDL_AGENT")
+                if hdl_agent and hasattr(hdl_agent, 'initialize_agent'):
+                    await hdl_agent.initialize_agent()
+                    logger.info("✅ HDL Agent initialization completed")
+                else:
+                    logger.warning("HDL Agent does not have initialize_agent method")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize HDL Agent: {e}")
+                logger.warning("HDL Agent will continue without full initialization")
+            
             # Connect agents to each other for direct communication
             await self.setup_agent_connections()
             
