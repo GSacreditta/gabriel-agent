@@ -1,0 +1,90 @@
+{
+  "timestamp": "2025-09-09T15:49:11.722618",
+  "environment": "cloud",
+  "tests": {
+    "secret_manager_config": {
+      "status": "pass",
+      "use_secret_manager": true,
+      "env_file_exists": false,
+      "secrets_in_env": true,
+      "details": {
+        "USE_SECRET_MANAGER": "true",
+        "env_file_present": false,
+        "secrets_loaded": true
+      }
+    },
+    "cloud_storage_config": {
+      "status": "fail",
+      "faiss_use_cloud_storage": true,
+      "bucket_name": "",
+      "persist_directory": "",
+      "details": {
+        "FAISS_USE_CLOUD_STORAGE": "true",
+        "FAISS_BUCKET_NAME": "",
+        "FAISS_PERSIST_DIRECTORY": ""
+      }
+    },
+    "google_auth_config": {
+      "status": "pass",
+      "service_account_auth": "location-19291",
+      "credentials_path": "",
+      "project_id": "location-19291",
+      "local_creds_exist": false,
+      "details": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "",
+        "GOOGLE_CLOUD_PROJECT": "location-19291",
+        "local_credentials_detected": false
+      }
+    },
+    "environment_variables": {
+      "status": "pass",
+      "variables": {
+        "DEBUG": {
+          "value": "false",
+          "expected": "false",
+          "correct": true
+        },
+        "USE_SECRET_MANAGER": {
+          "value": "true",
+          "expected": "true",
+          "correct": true
+        },
+        "FAISS_USE_CLOUD_STORAGE": {
+          "value": "true",
+          "expected": "true",
+          "correct": true
+        },
+        "GOOGLE_CLOUD_PROJECT": {
+          "value": "location-19291",
+          "expected": null,
+          "correct": true
+        },
+        "DB_HOST": {
+          "value": "34.138.210.82",
+          "expected": null,
+          "correct": true
+        }
+      },
+      "all_correct": true
+    },
+    "security_config": {
+      "status": "pass",
+      "security_issues": [],
+      "issues_count": 0
+    },
+    "service_architecture": {
+      "status": "pass",
+      "settings_loaded": true,
+      "services_config": {
+        "vector_service": {
+          "use_cloud_storage": true,
+          "bucket_name": "gabriel-agent-faiss"
+        },
+        "secret_manager": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "overall_status": "fail"
+}
