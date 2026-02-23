@@ -1,0 +1,14 @@
+####   **1\. Architecture Decisions Document (ADR)**
+
+#### **This ADR captures all clarified decisions from our discussions, using a standard template. Each entry includes context, decision, and consequences. Decisions are prioritized for Scenario 1's minimal extension.**
+
+| ADR \# | Date | Decision Title | Status | Context & Problem | Decision | Consequences & Trade-offs |
+| ----- | ----- | ----- | ----- | ----- | ----- | ----- |
+| **001** | **2026-01-04** | **Hybrid UX with Slack as Chat-Only** | **Approved** | **Need real-time HDL/notifications; web for visuals. Existing Slack integration is core but no web.** | **Slack remains chat-only (no folder mirroring); web (Streamlit) handles Box-like folders/dashboards with central AI chat syncing responses to Slack.** | **Pros: Reuse slack\_service.py; mobile-friendly. Cons: Potential sync delays; users switch apps for folders.** |
+| **002** | **2026-01-04** | **Minimal Extension – Scenario 1** | **Approved** | **4 devs; avoid long dev cycles. Mature Cloud Run/SQL/GCS setup.** | **Extend existing Python/LangChain, add Vision API \+ Streamlit; fresh DB start with no old data import.** | **Pros: MVP in weeks; low cost. Cons: Streamlit may limit advanced UX (mitigate with CSS).** |
+| **003** | **2026-01-04** | **Multilingual & Original Language Fidelity** | **Approved** | **Docs like mutuo (Spanish) need accurate handling; English UI preference.** | **Use Vision API for OCR; summaries/snippets in original language; English as main UI with on-demand original previews (no auto-translate).** | **Pros: Fidelity to PRD/examples. Cons: LLM tuning for non-English; slight UI complexity for toggles.** |
+| **004** | **2026-01-04** | **User-Approved Critical Actions** | **Approved** | **Errors in status/tasks risky; explicit control needed.** | **All changes (status, tasks, resolutions) proposed via HDL with suggestions; require confirmation (no autos).** | **Pros: Safety/auditability. Cons: Adds user steps; design for quick Slack buttons.** |
+| **005** | **2026-01-04** | **Investment Context Panel** | **Approved** | **Need persistent focus in chat/folders for efficiency.** | **Always-visible right panel in web; auto-updates on selection/query.** | **Pros: Reduces context loss. Cons: Screen real estate; responsive design needed.** |
+| **006** | **2026-01-04** | **Drag & Drop Scope** | **Approved** | **Simple uploads to avoid complexity in minimal extension.** | **Single-file only; no bulk folders for MVP.** | **Pros: Easy Streamlit implementation. Cons: Future bulk as enhancement.** |
+| **007** | **2026-01-04** | **Color-Coded Folders by Category** | **Approved** | **Visual differentiation for investments.** | **Sidebar folders colored: Private Lending (Blue), Real Estate (Green), Digital Assets (Orange), Venture Capital (Gold), Alternative (Magenta).** | **Pros: Intuitive navigation. Cons: Custom CSS in Streamlit; accessibility checks for colors.** |
+

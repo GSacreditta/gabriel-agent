@@ -1,0 +1,69 @@
+<mxfile host="app.diagrams.net" modified="2026-01-06T00:00:00.000Z" agent="7.0 (Windows)" version="20.8.3" type="device">
+  <diagram id="schema" name="Task 1.1 Schema">
+    <mxGraphModel dx="1200" dy="720" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="720" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="entities" value="&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Entities&lt;/b&gt;&lt;/div&gt;&lt;div&gt;entity_id (PK)&lt;/div&gt;&lt;div&gt;name (unique)&lt;/div&gt;&lt;div&gt;entity_type (enum)&lt;/div&gt;&lt;div&gt;ownership_split (JSON)&lt;/div&gt;&lt;div&gt;formation_docs_link&lt;/div&gt;&lt;div&gt;ein_tax_id&lt;/div&gt;&lt;div&gt;google_drive_folder_id&lt;/div&gt;&lt;div&gt;contact_info / notes&lt;/div&gt;" style="swimlane;childLayout=stackLayout;horizontal=0;startSize=36;rounded=0;fillColor=#dbeafe;strokeColor=#1f2933;fontColor=#1f2933;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="320" height="260" as="geometry"/>
+        </mxCell>
+        <mxCell id="investments" value="&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Investments&lt;/b&gt;&lt;/div&gt;&lt;div&gt;investment_id (PK)&lt;/div&gt;&lt;div&gt;entity_id (FK)&lt;/div&gt;&lt;div&gt;short_name / fund_operator&lt;/div&gt;&lt;div&gt;external_id&lt;/div&gt;&lt;div&gt;category (enum)&lt;/div&gt;&lt;div&gt;status (enum)&lt;/div&gt;&lt;div&gt;commitment_amount&lt;/div&gt;&lt;div&gt;amount_called&lt;/div&gt;&lt;div&gt;expected_irr / actual_irr&lt;/div&gt;&lt;div&gt;interest_rate&lt;/div&gt;&lt;div&gt;notes&lt;/div&gt;" style="swimlane;childLayout=stackLayout;horizontal=0;startSize=36;rounded=0;fillColor=#dcfce7;strokeColor=#1f2933;fontColor=#1f2933;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="420" y="40" width="320" height="320" as="geometry"/>
+        </mxCell>
+        <mxCell id="documents" value="&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Documents&lt;/b&gt;&lt;/div&gt;&lt;div&gt;doc_id (PK)&lt;/div&gt;&lt;div&gt;entity_id (FK)&lt;/div&gt;&lt;div&gt;investment_id (FK)&lt;/div&gt;&lt;div&gt;file_name / file_id&lt;/div&gt;&lt;div&gt;google_drive_link&lt;/div&gt;&lt;div&gt;upload_date / issue_date&lt;/div&gt;&lt;div&gt;document_language&lt;/div&gt;&lt;div&gt;two_line_summary&lt;/div&gt;&lt;div&gt;extracted_fields (JSON)&lt;/div&gt;&lt;div&gt;tags (JSON)&lt;/div&gt;&lt;div&gt;vector_store_key&lt;/div&gt;" style="swimlane;childLayout=stackLayout;horizontal=0;startSize=36;rounded=0;fillColor=#fef3c7;strokeColor=#1f2933;fontColor=#1f2933;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="800" y="40" width="320" height="320" as="geometry"/>
+        </mxCell>
+        <mxCell id="tasks" value="&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Tasks&lt;/b&gt;&lt;/div&gt;&lt;div&gt;task_id (PK)&lt;/div&gt;&lt;div&gt;entity_id (FK)&lt;/div&gt;&lt;div&gt;investment_id (FK)&lt;/div&gt;&lt;div&gt;linked_document_id (FK)&lt;/div&gt;&lt;div&gt;description / type&lt;/div&gt;&lt;div&gt;due_date&lt;/div&gt;&lt;div&gt;frequency (enum)&lt;/div&gt;&lt;div&gt;status (enum)&lt;/div&gt;&lt;div&gt;reminder_settings (JSON)&lt;/div&gt;" style="swimlane;childLayout=stackLayout;horizontal=0;startSize=36;rounded=0;fillColor=#ede9fe;strokeColor=#1f2933;fontColor=#1f2933;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="360" width="320" height="300" as="geometry"/>
+        </mxCell>
+        <mxCell id="obligations" value="&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Obligations&lt;/b&gt;&lt;/div&gt;&lt;div&gt;obligation_id (PK)&lt;/div&gt;&lt;div&gt;entity_id (FK)&lt;/div&gt;&lt;div&gt;investment_id (FK)&lt;/div&gt;&lt;div&gt;linked_document_id (FK)&lt;/div&gt;&lt;div&gt;frequency (enum)&lt;/div&gt;&lt;div&gt;trigger_date&lt;/div&gt;&lt;div&gt;reminder_lead_time&lt;/div&gt;&lt;div&gt;last_completed&lt;/div&gt;&lt;div&gt;is_active&lt;/div&gt;" style="swimlane;childLayout=stackLayout;horizontal=0;startSize=36;rounded=0;fillColor=#fee2e2;strokeColor=#1f2933;fontColor=#1f2933;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="420" y="400" width="320" height="260" as="geometry"/>
+        </mxCell>
+        <mxCell id="authorizations" value="&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;Authorizations&lt;/b&gt;&lt;/div&gt;&lt;div&gt;auth_id (PK)&lt;/div&gt;&lt;div&gt;entity_id (FK)&lt;/div&gt;&lt;div&gt;investment_id (FK)&lt;/div&gt;&lt;div&gt;task_type&lt;/div&gt;&lt;div&gt;author&lt;/div&gt;&lt;div&gt;expiry&lt;/div&gt;&lt;div&gt;slack_link&lt;/div&gt;&lt;div&gt;description&lt;/div&gt;" style="swimlane;childLayout=stackLayout;horizontal=0;startSize=36;rounded=0;fillColor=#fbcfe8;strokeColor=#1f2933;fontColor=#1f2933;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="800" y="400" width="320" height="220" as="geometry"/>
+        </mxCell>
+        <mxCell id="processed" value="&lt;div style=&quot;font-size: 14px;&quot;&gt;&lt;b&gt;ProcessedFiles&lt;/b&gt;&lt;/div&gt;&lt;div&gt;id (PK)&lt;/div&gt;&lt;div&gt;file_id (unique)&lt;/div&gt;&lt;div&gt;entity_id / investment_id&lt;/div&gt;&lt;div&gt;processing_status&lt;/div&gt;&lt;div&gt;folder tracking&lt;/div&gt;&lt;div&gt;processed_at&lt;/div&gt;&lt;div&gt;approved_at&lt;/div&gt;" style="swimlane;childLayout=stackLayout;horizontal=0;startSize=36;rounded=0;fillColor=#e2e8f0;strokeColor=#1f2933;fontColor=#1f2933;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="800" y="640" width="320" height="160" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_entities_investments" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeColor=#0f172a;" edge="1" source="entities" target="investments" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_investments_documents" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeColor=#0f172a;" edge="1" source="investments" target="documents" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_entities_tasks" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeColor=#0f172a;" edge="1" source="entities" target="tasks" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_investments_tasks" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeColor=#0f172a;" edge="1" source="investments" target="tasks" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_investments_obligations" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeColor=#0f172a;" edge="1" source="investments" target="obligations" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_documents_tasks" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeColor=#0f172a;" edge="1" source="documents" target="tasks" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="960" y="360"/>
+              <mxPoint x="360" y="520"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_documents_obligations" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeColor=#0f172a;" edge="1" source="documents" target="obligations" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="960" y="360"/>
+              <mxPoint x="740" y="520"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_entities_authorizations" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeColor=#0f172a;" edge="1" source="entities" target="authorizations" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_investments_authorizations" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeColor=#0f172a;dashed=1;" edge="1" source="investments" target="authorizations" parent="1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
+

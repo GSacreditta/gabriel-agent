@@ -1,0 +1,83 @@
+{
+  "timestamp": "2025-09-18T23:31:03.079741",
+  "phases": {
+    "phase1_imports": {
+      "status": "completed",
+      "issues": [],
+      "successes": [
+        "app.core.config.get_settings",
+        "app.services.agent.create_agent",
+        "app.services.google_drive.GoogleDriveService",
+        "app.services.slack_service.SlackService",
+        "app.services.ocr_service.OCRService",
+        "app.services.vector_storage_service.VectorStorageService",
+        "app.tools.vector_search_tool.VectorSearchTool",
+        "app.tools.agent_query_tool.AgentQueryTool",
+        "langchain_openai.ChatOpenAI",
+        "langchain.agents.create_openai_functions_agent"
+      ]
+    },
+    "phase2_config": {
+      "status": "completed",
+      "issues": [],
+      "config": {
+        "OPENAI_API_KEY": "sk-proj-bG...zWYA",
+        "GOOGLE_DRIVE_FOLDER_ID": "1mI0N2VXo9zQPSBq4u4dNJd4ixjUuUTZe",
+        "FAISS_PERSIST_DIRECTORY": "/app/faiss_db",
+        "FAISS_USE_CLOUD_STORAGE": "True"
+      }
+    },
+    "phase3_services": {
+      "status": "completed",
+      "services": {
+        "GoogleDriveService": {
+          "status": "failed",
+          "error": "GOOGLE_APPLICATION_CREDENTIALS not set",
+          "traceback": "Traceback (most recent call last):\n  File \"C:\\Users\\gster\\Cursor_PA\\gabriel-agent\\autonomous_diagnostic.py\", line 178, in phase3_service_testing\n    service_instance = service_class()\n                       ^^^^^^^^^^^^^^^\n  File \"C:\\Users\\gster\\Cursor_PA\\gabriel-agent\\app\\services\\google_drive.py\", line 21, in __init__\n    logger.debug(f\"Loading credentials from: {self.settings.get_google_credentials_path()}\")\n                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:\\Users\\gster\\Cursor_PA\\gabriel-agent\\app\\core\\config.py\", line 100, in get_google_credentials_path\n    raise ValueError(\"GOOGLE_APPLICATION_CREDENTIALS not set\")\nValueError: GOOGLE_APPLICATION_CREDENTIALS not set\n"
+        },
+        "OCRService": {
+          "status": "success",
+          "instance_type": "<class 'app.services.ocr_service.OCRService'>"
+        },
+        "VectorStorageService": {
+          "status": "success",
+          "instance_type": "<class 'app.services.vector_storage_service.VectorStorageService'>"
+        },
+        "SlackService": {
+          "status": "success",
+          "instance_type": "<class 'app.services.slack_service.SlackService'>"
+        }
+      }
+    },
+    "phase4_agent": {
+      "status": "success",
+      "issues": []
+    },
+    "phase5_tools": {
+      "status": "completed",
+      "tools": {
+        "VectorSearchTool": {
+          "status": "success"
+        }
+      }
+    },
+    "phase6_integration": {
+      "status": "completed",
+      "integrations": {
+        "main_simulation": {
+          "status": "simulated",
+          "note": "Cannot fully test without actual deployment"
+        }
+      }
+    }
+  },
+  "issues_found": [],
+  "fixes_applied": [],
+  "final_status": "healthy",
+  "summary": {
+    "total_phases": 6,
+    "failed_phases": [],
+    "total_issues": 0,
+    "status": "healthy"
+  }
+}

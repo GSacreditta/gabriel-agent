@@ -1,0 +1,2 @@
+2025-09-18 19:34:06,212 - INFO - ERROR: Google Drive Application Default Credentials fix
+2025-09-18 19:34:06,212 - INFO - Details: Deployment error: [WinError 2] The system cannot find the file specified

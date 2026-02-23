@@ -1,0 +1,130 @@
+{
+  "environment": {
+    "env_var_OPENAI_API_KEY": {
+      "status": "FAIL",
+      "details": "",
+      "error": "Required variable not set",
+      "timestamp": "2025-09-09T10:06:59.560612"
+    },
+    "env_var_GOOGLE_APPLICATION_CREDENTIALS": {
+      "status": "FAIL",
+      "details": "",
+      "error": "Required variable not set",
+      "timestamp": "2025-09-09T10:06:59.600438"
+    },
+    "env_var_GOOGLE_DRIVE_FOLDER_ID": {
+      "status": "FAIL",
+      "details": "",
+      "error": "Required variable not set",
+      "timestamp": "2025-09-09T10:06:59.624447"
+    },
+    "env_var_SLACK_BOT_TOKEN": {
+      "status": "FAIL",
+      "details": "",
+      "error": "Required variable not set",
+      "timestamp": "2025-09-09T10:06:59.655853"
+    },
+    "env_var_DATABASE_URL": {
+      "status": "FAIL",
+      "details": "",
+      "error": "Required variable not set",
+      "timestamp": "2025-09-09T10:06:59.812571"
+    },
+    "env_var_SLACK_SIGNING_SECRET": {
+      "status": "WARN",
+      "details": "Optional variable not set",
+      "error": "",
+      "timestamp": "2025-09-09T10:06:59.900910"
+    },
+    "env_var_SLACK_APP_TOKEN": {
+      "status": "WARN",
+      "details": "Optional variable not set",
+      "error": "",
+      "timestamp": "2025-09-09T10:07:00.384006"
+    },
+    "env_var_GMAIL_CLIENT_ID": {
+      "status": "WARN",
+      "details": "Optional variable not set",
+      "error": "",
+      "timestamp": "2025-09-09T10:07:00.594984"
+    },
+    "env_var_GMAIL_CLIENT_SECRET": {
+      "status": "WARN",
+      "details": "Optional variable not set",
+      "error": "",
+      "timestamp": "2025-09-09T10:07:00.749808"
+    },
+    "config_loading": {
+      "status": "PASS",
+      "details": "Configuration loaded successfully",
+      "error": "",
+      "timestamp": "2025-09-09T10:07:08.006397"
+    },
+    "google_credentials_file": {
+      "status": "FAIL",
+      "details": "",
+      "error": "Credentials file not found",
+      "timestamp": "2025-09-09T10:07:08.141731"
+    }
+  },
+  "services": {
+    "agent_service": {
+      "status": "PASS",
+      "details": "Agent service created successfully",
+      "error": "",
+      "timestamp": "2025-09-09T10:07:54.005955"
+    },
+    "google_drive_service": {
+      "status": "PASS",
+      "details": "Drive service working, found 2 files",
+      "error": "",
+      "timestamp": "2025-09-09T10:07:59.177256"
+    },
+    "vector_storage_service": {
+      "status": "PASS",
+      "details": "Vector storage initialized",
+      "error": "",
+      "timestamp": "2025-09-09T10:08:04.293156"
+    },
+    "ocr_service": {
+      "status": "PASS",
+      "details": "OCR service initialized",
+      "error": "",
+      "timestamp": "2025-09-09T10:08:16.331456"
+    },
+    "pdf_service": {
+      "status": "PASS",
+      "details": "PDF service initialized",
+      "error": "",
+      "timestamp": "2025-09-09T10:08:16.442460"
+    },
+    "slack_service": {
+      "status": "PASS",
+      "details": "Slack service initialized with agent",
+      "error": "",
+      "timestamp": "2025-09-09T10:08:18.908040"
+    }
+  },
+  "database": {
+    "connection": {
+      "status": "FAIL",
+      "details": "",
+      "error": "DATABASE_URL not set",
+      "timestamp": "2025-09-09T10:07:12.307762"
+    }
+  },
+  "api_endpoints": {},
+  "integration": {},
+  "agents": {},
+  "summary": {
+    "total_tests": 18,
+    "passed_tests": 7,
+    "failed_tests": 7,
+    "warnings": 4,
+    "success_rate": 38.88888888888889,
+    "execution_time_seconds": 93.74,
+    "timestamp": "2025-09-09T10:08:32.860247",
+    "quick_mode": false,
+    "skip_api": false
+  }
+}
