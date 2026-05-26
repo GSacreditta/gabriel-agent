@@ -1,0 +1,15 @@
+# Family Office Entity List
+# One entity per line. These are the legal entities (trusts, LLCs, individuals)
+# used by the LLM to classify emails during the inventory pass.
+#
+# Lines starting with # are comments and ignored.
+#
+# INSTRUCTIONS: Replace the examples below with your actual entity names.
+# Example formats:
+#   Sternberg Family Trust
+#   SM18 Holdings LLC
+#   Gabriel Sternberg (Individual)
+#   XYZ Investment Partnership LP
+#
+# === ADD YOUR ENTITIES BELOW THIS LINE ===
+SM18_FO
