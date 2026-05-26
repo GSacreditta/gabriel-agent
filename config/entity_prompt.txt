@@ -1,0 +1,17 @@
+You are classifying emails for a family office. Given an email's metadata, determine which legal entity (if any) this email is most likely associated with.
+
+ENTITIES:
+{entity_list}
+
+EMAIL METADATA:
+- From: {from_name} <{from_email}>
+- Subject: {subject}
+- Snippet: {snippet}
+
+INSTRUCTIONS:
+1. Based on the sender, subject, and snippet, determine which entity from the list above this email most likely relates to.
+2. If none of the entities match, respond with "UNKNOWN".
+3. If multiple entities could apply, pick the most likely one.
+
+Respond in exactly this JSON format (no markdown, no extra text):
+{"entity": "<entity name or UNKNOWN>", "confidence": "<high|medium|low>", "reasoning": "<one sentence explanation>"}

@@ -1,0 +1,20 @@
+# Gmail Inventory Pass - Query Definitions
+# SCOPE: Only emails under the "Finanzas" label are enumerated.
+# No multi-pass needed — we pull everything under that label.
+
+# Primary label scope (Gmail label name)
+label_scope: "Finanzas"
+
+# Single pass: all emails under the Finanzas label
+passes:
+  - name: "finanzas_all"
+    description: "All emails under the Finanzas label"
+    query_template: "label:{label_scope}"
+
+# Maximum results per query page (Gmail API limit is 500)
+max_results_per_page: 500
+
+# Date range filter (optional - leave empty for all time)
+# Format: YYYY/MM/DD
+date_after: ""
+date_before: ""
