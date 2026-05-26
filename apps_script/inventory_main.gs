@@ -6,18 +6,31 @@
  *   1. A Google Sheet (for review)
  *   2. GCS bucket gmail-finanzas (for the pipeline)
  *
- * Runs under sternbergg@gmail.com — not blocked by Advanced Protection
- * because Apps Script is a Google first-party service.
+ * SECURITY:
+ *   - Uses the Gmail Advanced Service with gmail.readonly scope ONLY
+ *   - Cannot modify, delete, send, or forward any email
+ *   - No data sent to external APIs — only your Sheet and your GCS bucket
+ *   - Script code is fully auditable
  *
  * SETUP:
- *   1. Go to script.google.com → New Project
+ *   1. Go to script.google.com → New Project (signed in as sternbergg@gmail.com)
  *   2. Paste this entire file into Code.gs
  *   3. Paste inventory_gcs.gs into a second file (File → New → Script)
  *   4. In Project Settings → Script Properties, add:
  *      - GCS_BUCKET: gmail-finanzas
- *      - GCP_PROJECT: location-19291
- *   5. In Services (left sidebar), add "Gmail API" (Advanced Gmail Service)
- *   6. Run runInventory() — authorize when prompted
+ *   5. In Services (left sidebar, + icon), add "Gmail API" v1
+ *   6. In Project Settings, check "Show appsscript.json manifest file in editor"
+ *   7. Edit appsscript.json — replace oauthScopes with:
+ *      "oauthScopes": [
+ *        "https://www.googleapis.com/auth/gmail.readonly",
+ *        "https://www.googleapis.com/auth/spreadsheets",
+ *        "https://www.googleapis.com/auth/drive",
+ *        "https://www.googleapis.com/auth/devstorage.read_write"
+ *      ]
+ *   8. Run runInventory() — authorize when prompted
+ *      (Prompt should say "View your email" — NOT "manage your email")
+ *
+ * @OnlyCurrentDoc
  */
 
 // ─── Configuration ─────────────────────────────────────────────────────
@@ -36,6 +49,7 @@ function runInventory() {
   Logger.log('🚀 Starting Gmail Inventory Pass');
   Logger.log('   Scope: label:' + CONFIG.LABEL_NAME);
   Logger.log('   Account: ' + Session.getActiveUser().getEmail());
+  Logger.log('   Security: gmail.readonly scope only');
 
   // Get or create spreadsheet
   const ss = getOrCreateSpreadsheet();
@@ -50,82 +64,92 @@ function runInventory() {
   writeMessagesHeaders(messagesSheet);
   writeAttachmentsHeaders(attachmentsSheet);
 
-  // Find the Finanzas label
-  const label = GmailApp.getUserLabelByName(CONFIG.LABEL_NAME);
-  if (!label) {
+  // ── Find the Finanzas label via Advanced Gmail Service ──
+  // (Uses gmail.readonly — no write access to Gmail)
+  const labelsResponse = Gmail.Users.Labels.list('me');
+  const finanzasLabel = labelsResponse.labels.find(l => l.name === CONFIG.LABEL_NAME);
+
+  if (!finanzasLabel) {
+    const allNames = labelsResponse.labels.map(l => l.name).join(', ');
     Logger.log('❌ Label "' + CONFIG.LABEL_NAME + '" not found!');
-    Logger.log('   Available labels: ' + GmailApp.getUserLabels().map(l => l.getName()).join(', '));
+    Logger.log('   Available labels: ' + allNames);
     throw new Error('Label "' + CONFIG.LABEL_NAME + '" not found in Gmail');
   }
 
-  Logger.log('✅ Found label: ' + CONFIG.LABEL_NAME);
+  Logger.log('✅ Found label: ' + finanzasLabel.name + ' (id: ' + finanzasLabel.id + ')');
 
-  // Enumerate all threads under the label
+  // ── Enumerate all messages under the label ──
   const allMessages = [];
   const allAttachments = [];
   const senderStats = {};
-  let threadCount = 0;
-  let start = 0;
+  let pageToken = null;
+  let pageCount = 0;
 
-  while (start < CONFIG.MAX_MESSAGES) {
-    const threads = label.getThreads(start, CONFIG.BATCH_SIZE);
-    if (threads.length === 0) break;
+  do {
+    const listParams = {
+      labelIds: [finanzasLabel.id],
+      maxResults: CONFIG.BATCH_SIZE
+    };
+    if (pageToken) listParams.pageToken = pageToken;
 
-    for (const thread of threads) {
-      threadCount++;
-      const messages = thread.getMessages();
+    const listResponse = Gmail.Users.Messages.list('me', listParams);
+    const messageStubs = listResponse.messages || [];
+    pageToken = listResponse.nextPageToken || null;
+    pageCount++;
 
-      for (const message of messages) {
-        const msgData = extractMessageMetadata(message, thread);
-        allMessages.push(msgData);
+    Logger.log('   Page ' + pageCount + ': ' + messageStubs.length + ' messages');
 
-        // Track sender stats
-        const domain = extractDomain(msgData.from_email);
-        if (!senderStats[domain]) {
-          senderStats[domain] = {
-            domain: domain,
-            message_count: 0,
-            attachment_count: 0,
-            attachment_bytes: 0,
-            first_date: msgData.date_iso,
-            last_date: msgData.date_iso,
-            sample_subjects: []
-          };
-        }
-        const stats = senderStats[domain];
-        stats.message_count++;
-        stats.attachment_count += msgData.attachment_count;
-        stats.attachment_bytes += msgData.attachment_total_bytes;
-        if (msgData.date_iso < stats.first_date) stats.first_date = msgData.date_iso;
-        if (msgData.date_iso > stats.last_date) stats.last_date = msgData.date_iso;
-        if (stats.sample_subjects.length < 3) {
-          stats.sample_subjects.push(msgData.subject.substring(0, 60));
-        }
-
-        // Extract attachment metadata
-        const attachments = message.getAttachments();
-        for (const att of attachments) {
-          allAttachments.push({
-            message_id: msgData.message_id,
-            filename: att.getName(),
-            mime_type: att.getContentType(),
-            size_bytes: att.getSize()
-          });
-        }
+    for (const stub of messageStubs) {
+      if (allMessages.length >= CONFIG.MAX_MESSAGES) {
+        Logger.log('⚠️ Hit MAX_MESSAGES cap: ' + CONFIG.MAX_MESSAGES);
+        pageToken = null;
+        break;
       }
 
-      // Progress logging every 50 threads
-      if (threadCount % 50 === 0) {
-        Logger.log('   Processed ' + threadCount + ' threads, ' + allMessages.length + ' messages...');
+      // Fetch full message metadata (gmail.readonly)
+      const msg = Gmail.Users.Messages.get('me', stub.id, { format: 'metadata', metadataHeaders: ['From', 'To', 'Subject', 'Date'] });
+      const fullMsg = Gmail.Users.Messages.get('me', stub.id, { format: 'full' });
+
+      const msgData = extractMessageMetadata(msg, fullMsg);
+      allMessages.push(msgData);
+
+      // Track sender stats
+      const domain = extractDomain(msgData.from_email);
+      if (!senderStats[domain]) {
+        senderStats[domain] = {
+          domain: domain,
+          message_count: 0,
+          attachment_count: 0,
+          attachment_bytes: 0,
+          first_date: msgData.date_iso,
+          last_date: msgData.date_iso,
+          sample_subjects: []
+        };
+      }
+      const stats = senderStats[domain];
+      stats.message_count++;
+      stats.attachment_count += msgData.attachment_count;
+      stats.attachment_bytes += msgData.attachment_total_bytes;
+      if (msgData.date_iso && msgData.date_iso < stats.first_date) stats.first_date = msgData.date_iso;
+      if (msgData.date_iso && msgData.date_iso > stats.last_date) stats.last_date = msgData.date_iso;
+      if (stats.sample_subjects.length < 3) {
+        stats.sample_subjects.push(msgData.subject.substring(0, 60));
+      }
+
+      // Extract attachment metadata from payload parts
+      const attachments = extractAttachmentMetadata(fullMsg);
+      for (const att of attachments) {
+        allAttachments.push({
+          message_id: msgData.message_id,
+          filename: att.filename,
+          mime_type: att.mime_type,
+          size_bytes: att.size_bytes
+        });
       }
     }
-
-    start += threads.length;
-    if (threads.length < CONFIG.BATCH_SIZE) break;
-  }
+  } while (pageToken);
 
   Logger.log('📊 Enumeration complete:');
-  Logger.log('   Threads: ' + threadCount);
   Logger.log('   Messages: ' + allMessages.length);
   Logger.log('   Attachments: ' + allAttachments.length);
   Logger.log('   Unique senders: ' + Object.keys(senderStats).length);
@@ -164,28 +188,38 @@ function runInventory() {
   };
 }
 
-// ─── Message Metadata Extraction ─────────────────────────────────────
+// ─── Message Metadata Extraction (Advanced Gmail Service) ────────────
 
-function extractMessageMetadata(message, thread) {
-  const from_raw = message.getFrom();
+function extractMessageMetadata(metadataMsg, fullMsg) {
+  const headers = {};
+  (metadataMsg.payload.headers || []).forEach(h => {
+    headers[h.name] = h.value;
+  });
+
+  const from_raw = headers['From'] || '';
   const parsed = parseSender(from_raw);
 
-  const attachments = message.getAttachments();
-  const totalBytes = attachments.reduce((sum, att) => sum + att.getSize(), 0);
+  // Count attachments from full message payload
+  const attachments = extractAttachmentMetadata(fullMsg);
+  const totalBytes = attachments.reduce((sum, a) => sum + a.size_bytes, 0);
+
+  // Convert epoch ms to ISO
+  const dateMs = parseInt(metadataMsg.internalDate);
+  const dateIso = dateMs ? new Date(dateMs).toISOString() : (headers['Date'] || '');
 
   return {
-    message_id: message.getId(),
-    thread_id: thread.getId(),
-    date_iso: message.getDate().toISOString(),
+    message_id: metadataMsg.id,
+    thread_id: metadataMsg.threadId,
+    date_iso: dateIso,
     from_email: parsed.email,
     from_name: parsed.name,
-    to: message.getTo(),
-    subject: message.getSubject() || '',
-    labels: thread.getLabels().map(l => l.getName()).join(','),
+    to: headers['To'] || '',
+    subject: headers['Subject'] || '',
+    labels: (metadataMsg.labelIds || []).join(','),
     has_attachments: attachments.length > 0,
     attachment_count: attachments.length,
     attachment_total_bytes: totalBytes,
-    snippet: message.getPlainBody() ? message.getPlainBody().substring(0, 200) : '',
+    snippet: metadataMsg.snippet || '',
     // Entity fields (populated later by LLM pass)
     entity_guess: '',
     entity_confidence: '',
@@ -193,18 +227,46 @@ function extractMessageMetadata(message, thread) {
   };
 }
 
+function extractAttachmentMetadata(fullMsg) {
+  const attachments = [];
+
+  function scanParts(parts) {
+    if (!parts) return;
+    for (const part of parts) {
+      if (part.filename && part.filename.length > 0) {
+        attachments.push({
+          filename: part.filename,
+          mime_type: part.mimeType || 'application/octet-stream',
+          size_bytes: (part.body && part.body.size) ? part.body.size : 0
+        });
+      }
+      if (part.parts) scanParts(part.parts);
+    }
+  }
+
+  if (fullMsg.payload) {
+    if (fullMsg.payload.filename && fullMsg.payload.filename.length > 0) {
+      attachments.push({
+        filename: fullMsg.payload.filename,
+        mime_type: fullMsg.payload.mimeType || 'application/octet-stream',
+        size_bytes: (fullMsg.payload.body && fullMsg.payload.body.size) ? fullMsg.payload.body.size : 0
+      });
+    }
+    scanParts(fullMsg.payload.parts);
+  }
+
+  return attachments;
+}
+
 // ─── Sheet Writers ───────────────────────────────────────────────────
 
 function getOrCreateSpreadsheet() {
-  // Look for existing spreadsheet
   const files = DriveApp.getFilesByName(CONFIG.SHEET_NAME);
   if (files.hasNext()) {
     const file = files.next();
     Logger.log('📄 Using existing spreadsheet: ' + file.getUrl());
     return SpreadsheetApp.open(file);
   }
-
-  // Create new
   const ss = SpreadsheetApp.create(CONFIG.SHEET_NAME);
   Logger.log('📄 Created spreadsheet: ' + ss.getUrl());
   return ss;
@@ -241,25 +303,21 @@ function writeAttachmentsHeaders(sheet) {
 
 function writeMessagesData(sheet, messages) {
   if (messages.length === 0) return;
-
   const rows = messages.map(m => [
     m.message_id, m.thread_id, m.date_iso, m.from_email, m.from_name,
     m.to, m.subject, m.labels, m.has_attachments, m.attachment_count,
     m.attachment_total_bytes, m.snippet, m.entity_guess,
     m.entity_confidence, m.entity_reasoning
   ]);
-
   sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   Logger.log('   Messages sheet: ' + rows.length + ' rows');
 }
 
 function writeAttachmentsData(sheet, attachments) {
   if (attachments.length === 0) return;
-
   const rows = attachments.map(a => [
     a.message_id, a.filename, a.mime_type, a.size_bytes
   ]);
-
   sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   Logger.log('   Attachments sheet: ' + rows.length + ' rows');
 }
@@ -278,7 +336,6 @@ function writeSendersSummary(sheet, senderStats) {
     s.domain, s.message_count, s.attachment_count, s.attachment_bytes,
     s.first_date, s.last_date, s.sample_subjects.join(' | ')
   ]);
-
   sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   Logger.log('   Senders summary: ' + rows.length + ' domains');
 }
@@ -289,6 +346,7 @@ function writeStats(sheet, messages, attachments, senderStats, startTime) {
   lines.push(['Generated', new Date().toISOString()]);
   lines.push(['Scope', 'label:' + CONFIG.LABEL_NAME]);
   lines.push(['Account', Session.getActiveUser().getEmail()]);
+  lines.push(['Security', 'gmail.readonly scope only']);
   lines.push(['']);
   lines.push(['Total messages', messages.length]);
   lines.push(['Total attachments', attachments.length]);
@@ -308,7 +366,6 @@ function writeStats(sheet, messages, attachments, senderStats, startTime) {
     lines.push([s.domain, s.message_count]);
   });
 
-  // Pad rows to 2 columns
   const rows = lines.map(l => l.length === 1 ? [l[0], ''] : l);
   sheet.getRange(1, 1, rows.length, 2).setValues(rows);
 }
