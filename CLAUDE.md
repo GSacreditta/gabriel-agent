@@ -31,23 +31,30 @@ Gabriel Agent is the AI-powered investment management assistant for the SM18 Fam
 - Testing: pytest
 - Linting: flake8, mypy
 
-## Project Structure
+## Project Structure (monorepo)
 ```
-app/
-    agents/        -- AI agent implementations
-    api/           -- FastAPI route handlers
-    core/          -- Core business logic
-    main.py        -- Application entry point
-    models/        -- Data models
-    services/      -- Service layer (drive, slack, ocr, pdf, vector, etc.)
-    tools/         -- Agent tool definitions
-    utils/         -- Utilities
-config/            -- Configuration and credentials
-tests/             -- Test suite
-docs/              -- Architecture docs
-alembic/           -- Database migrations
-scripts/           -- Utility scripts
+apps/
+    api/                   -- FastAPI service (Cloud Run deployable)
+        Dockerfile
+        requirements.txt
+        app/
+            agents/        -- AI agent implementations
+            api/           -- FastAPI route handlers
+            core/          -- Core business logic
+            main.py        -- Application entry point
+            models/        -- Data models
+            services/      -- Service layer (drive, slack, ocr, pdf, vector, etc.)
+            tools/         -- Agent tool definitions
+            utils/         -- Utilities
+config/                    -- Configuration and credentials
+tests/                     -- Test suite
+docs/                      -- Architecture, ADRs, PRD, skills, archive
+alembic/                   -- Database migrations (script_location at root)
+scripts/                   -- Utility scripts
+cloudbuild.yaml            -- Cloud Build pipeline (build context: apps/api/)
 ```
+
+When a second deployable lands (e.g. Streamlit UI), it slots in as `apps/streamlit-ui/` with its own Dockerfile and requirements.txt. Shared code between apps would move into `packages/<name>/`.
 
 ## Current Status
 - 11/12 services running on Cloud Run

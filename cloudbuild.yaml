@@ -1,7 +1,7 @@
 steps:
-  # Build the container image
+  # Build the container image (build context is apps/api/, Dockerfile lives there too)
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/gabriel-agent:$BUILD_ID', '-t', 'gcr.io/$PROJECT_ID/gabriel-agent:latest', '.']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/gabriel-agent:$BUILD_ID', '-t', 'gcr.io/$PROJECT_ID/gabriel-agent:latest', '-f', 'apps/api/Dockerfile', 'apps/api/']
     
   # Push the container image to Container Registry
   - name: 'gcr.io/cloud-builders/docker'

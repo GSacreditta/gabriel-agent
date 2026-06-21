@@ -54,8 +54,12 @@ logs/
 !app/**
 !apps/
 !apps/**
+apps/**/__pycache__/
+apps/**/venv/
+apps/**/.venv/
 !packages/
 !packages/**
+packages/**/__pycache__/
 !docs/
 !docs/**
 !alembic/

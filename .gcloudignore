@@ -26,10 +26,11 @@ ngrok.exe
 venv/
 
 # IMPORTANT: Allow these files for deployment
-!Dockerfile
-!requirements_minimal.txt
 !cloudbuild.yaml
-!app/
+!apps/
+!apps/api/Dockerfile
+!apps/api/requirements.txt
+!apps/api/app/
 !config/
 
 # SECURITY: Block .env from production (use Secret Manager instead)

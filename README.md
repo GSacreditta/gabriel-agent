@@ -19,7 +19,7 @@ source venv/bin/activate  # On Windows: .\venv\Scripts\activate
 
 2. Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install -r apps/api/requirements.txt
 ```
 
 3. Configure environment variables:
@@ -36,15 +36,28 @@ pip install -r requirements.txt
 
 ```
 gabriel-agent/
-├── app/
-│   ├── api/
-│   ├── core/
-│   └── services/
+├── apps/
+│   └── api/                 # FastAPI service (Cloud Run)
+│       ├── Dockerfile
+│       ├── requirements.txt
+│       └── app/
+│           ├── api/
+│           ├── agents/
+│           ├── core/
+│           ├── services/
+│           └── main.py
 ├── config/
 ├── tests/
-├── .env
-├── requirements.txt
+├── alembic/                 # DB migrations
+├── docs/                    # Architecture, ADRs, PRD, archive
+├── cloudbuild.yaml          # Cloud Build (builds apps/api/)
+├── .env                     # Local secrets (gitignored)
 └── README.md
+```
+
+To run the API locally:
+```bash
+cd apps/api && python -m uvicorn app.main:app --reload --port 8081
 ```
 
 ### 4.4 Database Schema Requirements
