@@ -1,0 +1,77 @@
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+
+# Local development and secrets (ALWAYS IGNORE for security)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+config/credentials/
+*.key
+*.pem
+secrets.json
+
+# Google Cloud credentials (NEVER commit these)
+*.json
+
+# FAISS local storage (only used for local development)
+faiss_db/
+
+# Temporary files
+temp/
+logs/
+
+# Ignore everything by default
+*
+# But allow these file types
+!*.py
+!*.md
+!*.txt
+!*.yaml
+!*.yml
+!*.json
+!*.toml
+!*.ini
+!*.sh
+
+# Allow specific directories
+!app/
+!app/**
+!apps/
+!apps/**
+!packages/
+!packages/**
+!docs/
+!docs/**
+!alembic/
+!alembic/**
+alembic/**/__pycache__/
+
+# Always track meta/ignore files themselves
+!.gitignore
+!.cursorignore
+!.aiignore
+!.gcloudignore
+!.dockerignore
+!Dockerfile
+!alembic.ini
+!pytest.ini
+!cloudbuild.yaml
+!requirements.txt
+
+

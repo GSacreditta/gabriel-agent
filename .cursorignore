@@ -1,0 +1,36 @@
+# Cursor-specific ignore — keep aligned with .aiignore.
+
+# Python build/runtime artifacts
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+
+# Test/coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases and vector indices
+faiss_db/
+faiss_index/
+chroma_db/
+test_chroma_db/
+*.faiss
+*.pkl
+
+# Historical noise
+docs/archive/
+
+# Logs
+*.log
+
+# Other
+ngrok.exe
+
+# Explicitly include .env for local dev (Cursor preference)
+!.env

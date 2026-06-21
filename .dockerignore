@@ -1,0 +1,120 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Development tools
+.cursor/
+.cursorignore
+.cursorrules
+.dockerignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment variables (sensitive)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Vector databases (will be restored from backup)
+faiss_db/
+chroma_db/
+test_chroma_db/
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+
+# Test files
+test_*.py
+*_test.py
+.pytest_cache/
+pytest.ini
+.coverage
+htmlcov/
+
+# Build artifacts
+ngrok.exe
+*.exe
+
+# Node modules (if any)
+node_modules/
+
+# Cache directories
+.cache/
+.npm/
+.yarn/
+
+# Deprecated and development directories (production build optimization)
+deprecated/
+scripts/
+
+# Additional development files
+debug_*.py
+run_*.py
+setup_*.py
+fix_*.py
+clean_*.py
+start_*.py
+check_*.py 

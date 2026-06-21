@@ -1,0 +1,44 @@
+# Generic AI agent ignore — used by Claude Code, Cursor (in addition to .cursorignore),
+# and any tool that respects .aiignore. Keep this list aligned with .cursorignore.
+
+# Python build/runtime artifacts
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+
+# Test/coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases and vector indices (heavy, generated, not source)
+faiss_db/
+faiss_index/
+chroma_db/
+test_chroma_db/
+*.faiss
+*.pkl
+
+# Historical noise — archived diagnostic reports and snapshots
+docs/archive/
+
+# Secrets / local config
+.env
+.env.*
+config/credentials/
+*.key
+*.pem
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Sibling Drive mount (strategy docs, not code)
+H:/My Drive/AI/SM_18z/
