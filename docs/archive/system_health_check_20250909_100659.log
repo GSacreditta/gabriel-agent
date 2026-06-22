@@ -1,0 +1,89 @@
+2025-09-09 10:06:59,503 - INFO - Mode: Comprehensive
+2025-09-09 10:06:59,509 - INFO - API Tests: Included
+2025-09-09 10:06:59,515 - INFO - ============================================================
+2025-09-09 10:06:59,599 - ERROR -     Error: Required variable not set
+2025-09-09 10:06:59,622 - ERROR -     Error: Required variable not set
+2025-09-09 10:06:59,652 - ERROR -     Error: Required variable not set
+2025-09-09 10:06:59,795 - ERROR -     Error: Required variable not set
+2025-09-09 10:06:59,856 - ERROR -     Error: Required variable not set
+2025-09-09 10:07:00,359 - INFO -     Details: Optional variable not set
+2025-09-09 10:07:00,579 - INFO -     Details: Optional variable not set
+2025-09-09 10:07:00,735 - INFO -     Details: Optional variable not set
+2025-09-09 10:07:00,852 - INFO -     Details: Optional variable not set
+2025-09-09 10:07:08,140 - INFO -     Details: Configuration loaded successfully
+2025-09-09 10:07:08,291 - ERROR -     Error: Credentials file not found
+2025-09-09 10:07:12,330 - ERROR -     Error: DATABASE_URL not set
+2025-09-09 10:07:37,832 - INFO - Google Cloud Vision imported successfully
+2025-09-09 10:07:37,921 - INFO - Creating LangChain agent...
+2025-09-09 10:07:50,071 - WARNING - Failed to initialize Google Cloud Vision client: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.
+2025-09-09 10:07:54,004 - INFO - LangChain agent created successfully
+2025-09-09 10:07:54,011 - INFO -     Details: Agent service created successfully
+2025-09-09 10:07:54,204 - INFO - Service Account Email: sm18-pa@location-19291.iam.gserviceaccount.com
+2025-09-09 10:07:54,205 - INFO - Project ID: location-19291
+2025-09-09 10:07:54,216 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-09-09 10:07:54,251 - INFO - === Google Drive API Call Details ===
+2025-09-09 10:07:54,252 - INFO - Service Account File: C:\Users\gster\Cursor_PA\gabriel-agent\config\credentials\location-19291-fb284eccae8d.json
+2025-09-09 10:07:54,253 - INFO - Service Account Email: sm18-pa@location-19291.iam.gserviceaccount.com
+2025-09-09 10:07:54,253 - INFO - Project ID: location-19291
+2025-09-09 10:07:54,253 - INFO - Folder ID: 1mI0N2VXo9zQPSBq4u4dNJd4ixjUuUTZe
+2025-09-09 10:07:54,257 - INFO - API Call Parameters: {'q': "'1mI0N2VXo9zQPSBq4u4dNJd4ixjUuUTZe' in parents and trashed = false", 'spaces': 'drive', 'fields': 'nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, size, webViewLink)', 'orderBy': 'modifiedTime desc', 'pageSize': 100}
+2025-09-09 10:07:59,170 - INFO - API Response: {'files': [{'id': '1RJ1iejLttcsqkpqfqd_RO9Vydbr8dC3X', 'name': 'Strobe Q1 2025 Letter_vF.pdf', 'mimeType': 'application/pdf', 'webViewLink': 'https://drive.google.com/file/d/1RJ1iejLttcsqkpqfqd_RO9Vydbr8dC3X/view?usp=drivesdk', 'createdTime': '2025-05-16T20:04:53.065Z', 'modifiedTime': '2025-05-30T18:57:29.954Z', 'size': '826307'}, {'id': '1aV9XveseLS0gJ2k_70WstMknZw33cB2Q', 'name': 'Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf', 'mimeType': 'application/pdf', 'webViewLink': 'https://drive.google.com/file/d/1aV9XveseLS0gJ2k_70WstMknZw33cB2Q/view?usp=drivesdk', 'createdTime': '2024-02-12T21:40:49.909Z', 'modifiedTime': '2024-02-12T21:40:50.034Z', 'size': '937184'}]}
+2025-09-09 10:07:59,175 - INFO - Found 2 files in master folder 1mI0N2VXo9zQPSBq4u4dNJd4ixjUuUTZe
+2025-09-09 10:07:59,176 - INFO - File in master folder: Strobe Q1 2025 Letter_vF.pdf (ID: 1RJ1iejLttcsqkpqfqd_RO9Vydbr8dC3X, Type: application/pdf)
+2025-09-09 10:07:59,176 - INFO - File in master folder: Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf (ID: 1aV9XveseLS0gJ2k_70WstMknZw33cB2Q, Type: application/pdf)
+2025-09-09 10:07:59,187 - INFO -     Details: Drive service working, found 2 files
+2025-09-09 10:08:01,848 - WARNING - Google Cloud Storage not available - FAISS will use local storage only
+2025-09-09 10:08:01,850 - INFO - Using local FAISS storage
+2025-09-09 10:08:01,854 - INFO - Vector database directory: \app\faiss_db
+2025-09-09 10:08:04,292 - WARNING - Could not load existing index: Could not import faiss python package. Please install it with `pip install faiss-gpu` (for CUDA supported GPU) or `pip install faiss-cpu` (depending on Python version).. Will create new one.
+2025-09-09 10:08:04,293 - INFO - Vector Storage Service initialized successfully with FAISS
+2025-09-09 10:08:04,298 - INFO -     Details: Vector storage initialized
+2025-09-09 10:08:16,330 - WARNING - Failed to initialize Google Cloud Vision client: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.
+2025-09-09 10:08:16,339 - INFO -     Details: OCR service initialized
+2025-09-09 10:08:16,441 - INFO - PDF Service initialized with multiple parsing strategies
+2025-09-09 10:08:16,454 - INFO -     Details: PDF service initialized
+2025-09-09 10:08:16,876 - INFO - SlackService instance created
+2025-09-09 10:08:16,876 - INFO - Initializing SlackService with agent and handlers...
+2025-09-09 10:08:16,880 - WARNING - Missing services for HandlerVector initialization
+2025-09-09 10:08:17,443 - INFO - Connected to Slack as U08T0MR1E5C in team Gabriel Agent
+2025-09-09 10:08:17,446 - INFO - Starting Slack Socket Mode...
+2025-09-09 10:08:18,904 - INFO - A new session has been established (session id: 955e5ad2-9631-4bed-b9f4-546648b37e4a)
+2025-09-09 10:08:18,905 - INFO - Slack Socket Mode started successfully
+2025-09-09 10:08:18,907 - INFO - SlackService initialization complete
+2025-09-09 10:08:18,916 - INFO - Starting to receive messages from a new connection (session id: 955e5ad2-9631-4bed-b9f4-546648b37e4a)
+2025-09-09 10:08:18,924 - INFO -     Details: Slack service initialized with agent
+2025-09-09 10:08:24,338 - INFO - Agent Coordinator initialized
+2025-09-09 10:08:24,339 - INFO - Initializing agents...
+2025-09-09 10:08:24,341 - INFO - Initialized DB_AGENT agent with ID: 105d884d-c8be-46b8-a7a5-80e2ebb2b038
+2025-09-09 10:08:24,341 - INFO - Initialized FILE_MANAGEMENT_AGENT agent with ID: 2f12aa50-fbb0-4309-82c4-f8a6218771d5
+2025-09-09 10:08:24,342 - INFO - Initialized EXTRACTION_AGENT agent with ID: 9d00666d-0f70-495b-867c-585e9d180b21
+2025-09-09 10:08:24,345 - INFO - Initialized STORAGE_AGENT agent with ID: 9ce40b37-2d76-45ab-a069-5c77657fbfa5
+2025-09-09 10:08:30,650 - INFO - Initialized HDL_AGENT agent with ID: 19195ca9-5555-4117-b7ce-d02ac57231ca
+2025-09-09 10:08:30,651 - INFO - Initializing DB Agent with database connection...
+2025-09-09 10:08:31,570 - INFO - Database service initialized
+2025-09-09 10:08:32,860 - INFO - ============================================================
+2025-09-09 10:08:32,894 - INFO - ============================================================
+2025-09-09 10:08:33,178 - INFO - Google Drive Service cleaned up successfully
+2025-09-09 10:08:33,181 - INFO - Cleaned up temporary directory: temp\gabriel_agent_vector_22a0gn02
+2025-09-09 10:08:33,181 - INFO - Vector Storage Service cleaned up successfully
+2025-09-09 10:08:33,183 - INFO - Stopping Slack Socket Mode...
+2025-09-09 10:08:34,525 - INFO - The connection has been closed (session id: 955e5ad2-9631-4bed-b9f4-546648b37e4a)
+2025-09-09 10:08:34,526 - INFO - Slack Socket Mode stopped
+2025-09-09 10:08:34,525 - INFO - The session seems to be already closed. Reconnecting... (session id: 955e5ad2-9631-4bed-b9f4-546648b37e4a)
+2025-09-09 10:08:34,528 - INFO - Slack resources cleaned up
+2025-09-09 10:08:34,529 - INFO - Connecting to a new endpoint...
+2025-09-09 10:08:35,460 - INFO - The connection has been closed (session id: 955e5ad2-9631-4bed-b9f4-546648b37e4a)
+2025-09-09 10:08:35,461 - INFO - A new session has been established (session id: 48065620-5af3-45e2-9629-d2daa9a21558)
+2025-09-09 10:08:35,463 - INFO - Connected to a new endpoint...
+2025-09-09 10:08:35,482 - INFO - Stopped receiving messages from a connection (session id: 955e5ad2-9631-4bed-b9f4-546648b37e4a)
+2025-09-09 10:08:35,586 - INFO - Starting to receive messages from a new connection (session id: 48065620-5af3-45e2-9629-d2daa9a21558)
+2025-09-09 10:08:35,589 - ERROR - Failed to process a message: cannot schedule new futures after shutdown
+Traceback (most recent call last):
+  File "C:\Users\gster\AppData\Roaming\Python\Python311\site-packages\slack_sdk\socket_mode\client.py", line 155, in process_messages
+    self.process_message()
+  File "C:\Users\gster\AppData\Roaming\Python\Python311\site-packages\slack_sdk\socket_mode\client.py", line 118, in process_message
+    self.message_workers.submit(_run_message_listeners)
+  File "C:\Program Files\Python311\Lib\concurrent\futures\thread.py", line 167, in submit
+    raise RuntimeError('cannot schedule new futures after shutdown')
+RuntimeError: cannot schedule new futures after shutdown
+2025-09-09 10:08:36,341 - INFO - Cleaned up temp directory: C:\Users\gster\AppData\Local\Temp\gabriel_agent_ocr_ptk1qgc4
