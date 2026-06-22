@@ -60,6 +60,8 @@ apps/**/.venv/
 !packages/
 !packages/**
 packages/**/__pycache__/
+!infra/
+!infra/**
 !docs/
 !docs/**
 !alembic/

@@ -85,15 +85,15 @@ Names only — values pulled at runtime via Secret Manager API.
 | Repo | Type | Region | Size | Notes |
 |---|---|---|---|---|
 | `gcr.io` (legacy) | Container Registry | multi-region | 31.1 GB | Cleanup candidate — migrating to Artifact Registry |
-| `cloud-run-source-deploy` | Artifact Registry (Docker) | us-east1 | 9.2 GB | Holds `gabriel-agent` (9 versions) and `gabriel-agent-v2` (6 versions, **orphan since Aug 2025**) |
+| `cloud-run-source-deploy` | Artifact Registry (Docker) | us-east1 | ~5 GB (post-cleanup) | Holds `gabriel-agent` only. `gabriel-agent-v2` family deleted 2026-06-21. Cleanup policy active: keep 5 latest + delete untagged >30 days (see [infra/artifact-registry-cleanup-policy.json](../../infra/artifact-registry-cleanup-policy.json)) |
 
 Image naming pattern: `<build-id-uuid>` + `latest` tag.
 Vulnerability scanning: **disabled** (Container Analysis API not enabled).
 
-### Cleanup candidates
-- Drop all `gabriel-agent-v2` images (no service consumes them).
-- Add image-retention policy on `cloud-run-source-deploy` to keep last 5 versions per family.
-- Eventually retire the legacy `gcr.io` registry once all builds publish to Artifact Registry.
+### Cleanup status
+- ✅ `gabriel-agent-v2` images deleted (2026-06-21).
+- ✅ Cleanup policy applied to `cloud-run-source-deploy`: keep 5 most recent per family, delete untagged >30d.
+- ⏳ Legacy `gcr.io` registry (31 GB) still active — Cloud Run currently pulls from there. Retire after migrating the deploy step in `cloudbuild.yaml` to publish to `cloud-run-source-deploy` instead.
 
 ---
 
