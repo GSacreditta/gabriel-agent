@@ -1,0 +1,54 @@
+# Block test files and development tools
+test_*.py
+*_test.py
+.pytest_cache/
+pytest.ini
+
+# Block development files
+.cursor/
+.cursorignore
+.cursorrules
+*.md
+docs/
+
+# Block logs and temp files
+*.log
+temp/
+chroma_db/
+faiss_db/
+__pycache__/
+
+# Block executables
+ngrok.exe
+*.exe
+
+# Block virtual env
+venv/
+
+# IMPORTANT: Allow these files for deployment
+!cloudbuild.yaml
+!apps/
+!apps/api/Dockerfile
+!apps/api/requirements.txt
+!apps/api/app/
+!config/
+
+# SECURITY: Block .env from production (use Secret Manager instead)
+.env
+
+# Block deprecated and development directories (major build size reduction)
+deprecated/
+scripts/
+temp/
+
+# Block additional development files
+debug_*.py
+run_*.py
+setup_*.py
+fix_*.py
+clean_*.py
+start_*.py
+check_*.py
+*.sh
+*.bat
+*.ps1 

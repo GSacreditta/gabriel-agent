@@ -1,0 +1,222 @@
+2025-09-09 10:16:16,092 - INFO - Mode: Comprehensive
+2025-09-09 10:16:16,093 - INFO - API Tests: Skipped
+2025-09-09 10:16:16,093 - INFO - ============================================================
+2025-09-09 10:16:16,103 - ERROR -     Error: Required variable not set
+2025-09-09 10:16:16,109 - ERROR -     Error: Required variable not set
+2025-09-09 10:16:16,113 - ERROR -     Error: Required variable not set
+2025-09-09 10:16:16,122 - ERROR -     Error: Required variable not set
+2025-09-09 10:16:16,130 - ERROR -     Error: Required variable not set
+2025-09-09 10:16:16,677 - ERROR -     Error: Credentials file not found
+2025-09-09 10:16:17,772 - ERROR -     Error: DATABASE_URL not set
+2025-09-09 10:16:25,297 - INFO - Google Cloud Vision imported successfully
+2025-09-09 10:16:25,319 - INFO - Creating LangChain agent...
+2025-09-09 10:16:37,410 - WARNING - Failed to initialize Google Cloud Vision client: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.
+2025-09-09 10:16:37,969 - INFO - LangChain agent created successfully
+2025-09-09 10:16:38,018 - INFO - Service Account Email: sm18-pa@location-19291.iam.gserviceaccount.com
+2025-09-09 10:16:38,018 - INFO - Project ID: location-19291
+2025-09-09 10:16:38,022 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-09-09 10:16:38,024 - INFO - === Google Drive API Call Details ===
+2025-09-09 10:16:38,024 - INFO - Service Account File: C:\Users\gster\Cursor_PA\gabriel-agent\config\credentials\location-19291-fb284eccae8d.json
+2025-09-09 10:16:38,024 - INFO - Service Account Email: sm18-pa@location-19291.iam.gserviceaccount.com
+2025-09-09 10:16:38,024 - INFO - Project ID: location-19291
+2025-09-09 10:16:38,025 - INFO - Folder ID: 1mI0N2VXo9zQPSBq4u4dNJd4ixjUuUTZe
+2025-09-09 10:16:38,026 - INFO - API Call Parameters: {'q': "'1mI0N2VXo9zQPSBq4u4dNJd4ixjUuUTZe' in parents and trashed = false", 'spaces': 'drive', 'fields': 'nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, size, webViewLink)', 'orderBy': 'modifiedTime desc', 'pageSize': 100}
+2025-09-09 10:16:39,234 - INFO - API Response: {'files': [{'id': '1RJ1iejLttcsqkpqfqd_RO9Vydbr8dC3X', 'name': 'Strobe Q1 2025 Letter_vF.pdf', 'mimeType': 'application/pdf', 'webViewLink': 'https://drive.google.com/file/d/1RJ1iejLttcsqkpqfqd_RO9Vydbr8dC3X/view?usp=drivesdk', 'createdTime': '2025-05-16T20:04:53.065Z', 'modifiedTime': '2025-05-30T18:57:29.954Z', 'size': '826307'}, {'id': '1aV9XveseLS0gJ2k_70WstMknZw33cB2Q', 'name': 'Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf', 'mimeType': 'application/pdf', 'webViewLink': 'https://drive.google.com/file/d/1aV9XveseLS0gJ2k_70WstMknZw33cB2Q/view?usp=drivesdk', 'createdTime': '2024-02-12T21:40:49.909Z', 'modifiedTime': '2024-02-12T21:40:50.034Z', 'size': '937184'}]}
+2025-09-09 10:16:39,235 - INFO - Found 2 files in master folder 1mI0N2VXo9zQPSBq4u4dNJd4ixjUuUTZe
+2025-09-09 10:16:39,235 - INFO - File in master folder: Strobe Q1 2025 Letter_vF.pdf (ID: 1RJ1iejLttcsqkpqfqd_RO9Vydbr8dC3X, Type: application/pdf)
+2025-09-09 10:16:39,236 - INFO - File in master folder: Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf (ID: 1aV9XveseLS0gJ2k_70WstMknZw33cB2Q, Type: application/pdf)
+2025-09-09 10:16:39,358 - WARNING - Google Cloud Storage not available - FAISS will use local storage only
+2025-09-09 10:16:39,358 - INFO - Using local FAISS storage
+2025-09-09 10:16:39,360 - INFO - Vector database directory: \app\faiss_db
+2025-09-09 10:16:41,130 - WARNING - Could not load existing index: Could not import faiss python package. Please install it with `pip install faiss-gpu` (for CUDA supported GPU) or `pip install faiss-cpu` (depending on Python version).. Will create new one.
+2025-09-09 10:16:41,131 - INFO - Vector Storage Service initialized successfully with FAISS
+2025-09-09 10:16:53,177 - WARNING - Failed to initialize Google Cloud Vision client: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.
+2025-09-09 10:16:53,210 - INFO - PDF Service initialized with multiple parsing strategies
+2025-09-09 10:16:53,552 - INFO - SlackService instance created
+2025-09-09 10:16:53,552 - INFO - Initializing SlackService with agent and handlers...
+2025-09-09 10:16:53,553 - WARNING - Missing services for HandlerVector initialization
+2025-09-09 10:16:53,811 - INFO - Connected to Slack as U08T0MR1E5C in team Gabriel Agent
+2025-09-09 10:16:53,812 - INFO - Starting Slack Socket Mode...
+2025-09-09 10:16:54,463 - INFO - A new session has been established (session id: 2cf01a07-32e5-40af-9b74-2026767610ee)
+2025-09-09 10:16:54,464 - INFO - Slack Socket Mode started successfully
+2025-09-09 10:16:54,464 - INFO - SlackService initialization complete
+2025-09-09 10:16:54,481 - INFO - Starting to receive messages from a new connection (session id: 2cf01a07-32e5-40af-9b74-2026767610ee)
+2025-09-09 10:17:01,314 - INFO - Agent Coordinator initialized
+2025-09-09 10:17:01,315 - INFO - Initializing agents...
+2025-09-09 10:17:01,319 - INFO - Initialized DB_AGENT agent with ID: d7abef1d-4dda-44eb-aeb9-5aef2eb878c8
+2025-09-09 10:17:01,320 - INFO - Initialized FILE_MANAGEMENT_AGENT agent with ID: f5324458-89cc-49ac-8dc1-7cb58c835e57
+2025-09-09 10:17:01,321 - INFO - Initialized EXTRACTION_AGENT agent with ID: 3bd9c7f9-8151-45ef-9fb4-6f780c16b84f
+2025-09-09 10:17:01,323 - INFO - Initialized STORAGE_AGENT agent with ID: c0bf53e4-1c4a-4f89-aab3-70c4ba8484e4
+2025-09-09 10:17:06,957 - INFO - Initialized HDL_AGENT agent with ID: a3499fa1-8bdb-4ddd-ba1f-ae37e9216fcf
+2025-09-09 10:17:06,959 - INFO - Initializing DB Agent with database connection...
+2025-09-09 10:17:08,977 - INFO - Database service initialized
+2025-09-09 10:17:11,009 - INFO - Database tables created
+2025-09-09 10:17:11,175 - INFO - DB_AGENT - DB Agent initialized with database connection: 
+2025-09-09 10:17:11,463 - INFO - Connecting File Management Agent to Google Drive...
+2025-09-09 10:17:12,774 - INFO - Service Account Email: sm18-pa@location-19291.iam.gserviceaccount.com
+2025-09-09 10:17:12,787 - INFO - Project ID: location-19291
+2025-09-09 10:17:12,892 - INFO - file_cache is only supported with oauth2client<4.0.0
+2025-09-09 10:17:12,953 - INFO - FILE_MANAGEMENT_AGENT - Google Drive service connected: {'service_account': 'sm18-pa@location-19291.iam.gserviceaccount.com'}
+2025-09-09 10:17:13,058 - INFO - Connecting HDL Agent to Slack service...
+2025-09-09 10:17:13,143 - INFO - Agent connections established
+2025-09-09 10:17:13,157 - INFO - All agents initialized successfully: ['DB_AGENT', 'FILE_MANAGEMENT_AGENT', 'EXTRACTION_AGENT', 'STORAGE_AGENT', 'HDL_AGENT']
+2025-09-09 10:17:13,162 - INFO - Agent Coordinator started successfully
+2025-09-09 10:17:13,308 - ERROR -     Error: 'str' object has no attribute 'get'
+2025-09-09 10:17:13,665 - INFO - Document Processor Service initialized
+2025-09-09 10:17:13,677 - INFO - Document Processor Service initialized with all dependencies
+2025-09-09 10:17:13,779 - INFO - File Discovery Service initialized
+2025-09-09 10:17:13,807 - INFO - File Discovery Service initialized with dependencies
+2025-09-09 10:17:13,809 - INFO - Starting folder scan
+2025-09-09 10:17:13,811 - INFO - === Google Drive API Call Details ===
+2025-09-09 10:17:13,812 - INFO - Service Account File: C:\Users\gster\Cursor_PA\gabriel-agent\config\credentials\location-19291-fb284eccae8d.json
+2025-09-09 10:17:13,841 - INFO - Service Account Email: sm18-pa@location-19291.iam.gserviceaccount.com
+2025-09-09 10:17:13,843 - INFO - Project ID: location-19291
+2025-09-09 10:17:13,856 - INFO - Folder ID: 1mI0N2VXo9zQPSBq4u4dNJd4ixjUuUTZe
+2025-09-09 10:17:13,859 - INFO - API Call Parameters: {'q': "'1mI0N2VXo9zQPSBq4u4dNJd4ixjUuUTZe' in parents and trashed = false", 'spaces': 'drive', 'fields': 'nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, size, webViewLink)', 'orderBy': 'modifiedTime desc', 'pageSize': 100}
+2025-09-09 10:17:14,138 - INFO - API Response: {'files': [{'id': '1RJ1iejLttcsqkpqfqd_RO9Vydbr8dC3X', 'name': 'Strobe Q1 2025 Letter_vF.pdf', 'mimeType': 'application/pdf', 'webViewLink': 'https://drive.google.com/file/d/1RJ1iejLttcsqkpqfqd_RO9Vydbr8dC3X/view?usp=drivesdk', 'createdTime': '2025-05-16T20:04:53.065Z', 'modifiedTime': '2025-05-30T18:57:29.954Z', 'size': '826307'}, {'id': '1aV9XveseLS0gJ2k_70WstMknZw33cB2Q', 'name': 'Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf', 'mimeType': 'application/pdf', 'webViewLink': 'https://drive.google.com/file/d/1aV9XveseLS0gJ2k_70WstMknZw33cB2Q/view?usp=drivesdk', 'createdTime': '2024-02-12T21:40:49.909Z', 'modifiedTime': '2024-02-12T21:40:50.034Z', 'size': '937184'}]}
+2025-09-09 10:17:14,146 - INFO - Found 2 files in master folder 1mI0N2VXo9zQPSBq4u4dNJd4ixjUuUTZe
+2025-09-09 10:17:14,152 - INFO - File in master folder: Strobe Q1 2025 Letter_vF.pdf (ID: 1RJ1iejLttcsqkpqfqd_RO9Vydbr8dC3X, Type: application/pdf)
+2025-09-09 10:17:14,156 - INFO - File in master folder: Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf (ID: 1aV9XveseLS0gJ2k_70WstMknZw33cB2Q, Type: application/pdf)
+2025-09-09 10:17:14,158 - INFO - Found 2 files in folder
+2025-09-09 10:17:14,159 - INFO - Found file: Strobe Q1 2025 Letter_vF.pdf (ID: 1RJ1iejLttcsqkpqfqd_RO9Vydbr8dC3X, Type: application/pdf)
+2025-09-09 10:17:14,160 - INFO - Found file: Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf (ID: 1aV9XveseLS0gJ2k_70WstMknZw33cB2Q, Type: application/pdf)
+2025-09-09 10:17:14,164 - INFO - Processing file: Strobe Q1 2025 Letter_vF.pdf
+2025-09-09 10:17:14,441 - INFO - File Strobe Q1 2025 Letter_vF.pdf validated with supported MIME type: application/pdf
+2025-09-09 10:17:14,443 - INFO - Validation result for Strobe Q1 2025 Letter_vF.pdf: {'is_valid': True, 'file_type': 'PDF'}
+2025-09-09 10:17:14,444 - INFO - File Strobe Q1 2025 Letter_vF.pdf processed status: False
+2025-09-09 10:17:14,445 - INFO - Added file Strobe Q1 2025 Letter_vF.pdf to processing queue
+2025-09-09 10:17:14,450 - INFO - Processing file: Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf
+2025-09-09 10:17:14,766 - INFO - File Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf validated with supported MIME type: application/pdf
+2025-09-09 10:17:14,774 - INFO - Validation result for Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf: {'is_valid': True, 'file_type': 'PDF'}
+2025-09-09 10:17:14,776 - INFO - File Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf processed status: False
+2025-09-09 10:17:14,777 - INFO - Added file Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf to processing queue
+2025-09-09 10:17:14,785 - INFO - Starting queue processing for 2 files
+2025-09-09 10:17:14,787 - INFO - Processing queue with 2 files
+2025-09-09 10:17:14,788 - INFO - Processing file: Strobe Q1 2025 Letter_vF.pdf
+2025-09-09 10:17:15,010 - INFO - Processing Strobe Q1 2025 Letter_vF.pdf (Type: application/pdf)
+2025-09-09 10:17:17,048 - INFO - Downloaded file to: temp\Strobe Q1 2025 Letter_vF.pdf
+2025-09-09 10:17:17,054 - INFO - Attempting PDF extraction with pymupdf
+2025-09-09 10:17:17,577 - WARNING - Parser pymupdf failed: pymupdf package not found, please install it with `pip install pymupdf`
+2025-09-09 10:17:17,584 - INFO - Attempting PDF extraction with pypdf
+2025-09-09 10:17:18,465 - WARNING - Ignoring wrong pointing object 6 0 (offset 0)
+2025-09-09 10:17:18,467 - WARNING - Ignoring wrong pointing object 13 0 (offset 0)
+2025-09-09 10:17:19,341 - INFO - Successfully extracted text using pypdf
+2025-09-09 10:17:19,342 - INFO - Sending Strobe Q1 2025 Letter_vF.pdf to Extraction Agent for AI analysis...
+2025-09-09 10:17:19,344 - INFO - Processing message: 
+                Analyze this document and extract key information:
+                
+                Document: Strobe Q1 2025 Letter_vF.pdf
+                Content: 1Source: Coingecko *Gross multiples on invested capital (i.e., the total combined value derived by the invested amount, “Gross MOIC”) are reflected on a gross basis and do not reflect the deduction of management fees, partnership expenses, carried interest and other applicable expenses for uniformly provide current investors with unaudited estimates. **Net TVPI or Total Value / Paid-in means distributions received by investors and the unrealized value relative to contributed capital. TVPI is reflected on a net basis and reflects the deduction of management fees, partnership expenses, carried interest and other expenses borne by investors. Past performance is not indicative of future results, historical data is not necessarily indicative of future data and any investment involves the risk of loss. There can be no assurance that the Fund will achieve similar or comparable results to the investment performance described herein.    
+Dear Limited Partners,  We are pleased to share our Q1 2025 update for Strobe Master Fund I, LP ("Strobe" or the "Fund"). Your Q1 2025 investor statements are available on the Securitize Fund Services portal (formerly MG Stover) alongside all historical Fund statements.  In contrast to 2024's historic ETF launches and shifting political landscape with a pro-crypto President and Congress in the U.S., Q1 2025 was marked by high macro-driven volatility and softer sentiment across digital assets and risk markets, as illustrated by Bitcoin (BTC) closing the quarter at $82,514 (compared to $93,508 as of December 31, 2024, and $103,594 as of May 14, 2025)1.  Macro headwinds and tariff-driven volatility adversely impacted our portfolio's liquid holdings in Q1, though the book’s fundamentals in terms of growth, traction, and runway remain strong. As of March 31, 2025, the Fund's gross MOIC, after applying internal valuation committee discounts to multiple positions, was 1.56x*, and the Fund's net TVPI (net of accrued incentive fees) was 1.25x** at th...
+                
+                Please extract:
+                1. Entity name (company/person this document relates to)
+                2. Document type (contract, report, invoice, etc.)
+                3. Key tasks or action items
+                4. Important dates or deadlines
+                5. Any obligations or requirements
+                
+                Format your response as JSON with these fields:
+                - entity_name: string
+                - entity_confidence: float (0-1)
+                - document_type: string
+                - document_confidence: float (0-1)
+                - tasks: array of objects with description, priority, due_date
+                - summary: string (2-3 sentences)
+                - requires_review: boolean
+                
+2025-09-09 10:17:21,573 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-09-09 10:17:26,327 - INFO - Document analysis complete for Strobe Q1 2025 Letter_vF.pdf
+2025-09-09 10:17:26,331 - INFO - Successfully processed file: Strobe Q1 2025 Letter_vF.pdf
+2025-09-09 10:17:26,332 - INFO - Processing file: Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf
+2025-09-09 10:17:26,543 - INFO - Processing Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf (Type: application/pdf)
+2025-09-09 10:17:27,734 - INFO - Downloaded file to: temp\Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf
+2025-09-09 10:17:27,735 - INFO - Attempting PDF extraction with pymupdf
+2025-09-09 10:17:27,738 - WARNING - Parser pymupdf failed: pymupdf package not found, please install it with `pip install pymupdf`
+2025-09-09 10:17:27,739 - INFO - Attempting PDF extraction with pypdf
+2025-09-09 10:17:29,193 - INFO - Successfully extracted text using pypdf
+2025-09-09 10:17:29,194 - INFO - Sending Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf to Extraction Agent for AI analysis...
+2025-09-09 10:17:29,195 - INFO - Processing message: 
+                Analyze this document and extract key information:
+                
+                Document: Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf
+                Content: Page 1 of 5 
+ 
+CONTRATO DE RENOVACIÓN DE MUTUO CON INTERÉS QUE CELEBRAN POR UNA PARTE, POR 
+SU PROPIO DERECHO, EL SEÑOR GABRIEL STERNBERG (EN LO SUCESIVO DENOMINADO COMO 
+EL “MUTUANTE”), Y POR OTRA PARTE TRANSACCIONES ELECTRÓNICAS DEL CANAL 
+TRADICIONAL, S.A.P.I. DE C.V., REPRESENTADA EN ESTE ACTO POR SU REPRESENTANTE LEGAL 
+EL SEÑOR ANTONINO BINAGGIA (EN LO SUCESIVO DENOMINADO COMO “TIENDA PAGO”, Y 
+CONJUNTAMENTE CON EL MUTUANTE DENOMINADOS COMO LAS “PARTES”), AL TENOR DE 
+LAS SIGUIENTES DECLARACIONES Y CLÁUSULAS: 
+ 
+ 
+DECLARACIONES 
+ 
+I. Declara el MUTUANTE por su propio derecho que: 
+ 
+1. Es una persona natural, identificado con el Pasaporte Nro. 141063030, con plena 
+capacidad para celebrar el presente instrumento.  
+ 
+2. Es su voluntad celebrar el presente Contrato con TIENDA PAGO a fin de otorgarle la 
+cantidad señalada en la cláusula PRIMERA del presente. 
+ 
+3. La procedencia de los recursos, objeto del presente instrumento, son de origen lícito. 
+ 
+ 
+ II. Declara TIENDA PAGO, por conducto de su representante legal que: 
+ 
+a) Su representada es una sociedad mercantil debidamente constituida y legalmente 
+existente de conformidad con las leyes de los Estados Unidos Mexicanos. 
+ 
+b) Su representante legal cuenta con los poderes necesarios para obligar a su representada 
+en los términos del presente Contrato, mismos que no le han sido revocados, limitados 
+ni modificados en forma alguna a la fecha de celebración de este instrumento. 
+ 
+c) Es su voluntad celebrar el presente Contrato con el fin de recibir la suma de dinero que 
+se señala en la cláusula primera del presente instrumento. 
+ 
+III. Declaran las PARTES, por conducto de sus respectivos representantes legales que: 
+  
+Se reconocen recíproca y mutuamente la personalidad con la que cada una se ostenta para la 
+celebración del presente Contrato, y que por así convenir a sus intereses celebran el presente, 
+y aceptan someter su voluntad al tenor de las siguientes:
+2 de 5 
+ 
+CLÁUSULAS 
+ 
+PRIMERA.- ANTECEDENTE...
+                
+                Please extract:
+                1. Entity name (company/person this document relates to)
+                2. Document type (contract, report, invoice, etc.)
+                3. Key tasks or action items
+                4. Important dates or deadlines
+                5. Any obligations or requirements
+                
+                Format your response as JSON with these fields:
+                - entity_name: string
+                - entity_confidence: float (0-1)
+                - document_type: string
+                - document_confidence: float (0-1)
+                - tasks: array of objects with description, priority, due_date
+                - summary: string (2-3 sentences)
+                - requires_review: boolean
+                
+2025-09-09 10:17:30,956 - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-09-09 10:17:36,357 - INFO - Document analysis complete for Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf
+2025-09-09 10:17:36,359 - INFO - Successfully processed file: Contrato Mutuo Gabriel Sternberg MX-003   Feb 2024 - Ago 2024.pdf
+2025-09-09 10:17:36,359 - INFO - Queue processing completed
+2025-09-09 10:17:37,403 - WARNING - Failed to cleanup temporary directory: 'VectorStorageService' object has no attribute 'temp_dir'
+2025-09-09 10:17:37,404 - ERROR - Test failed: VectorStorageService.__init__() got an unexpected keyword argument 'collection_name'
+2025-09-09 10:17:37,409 - ERROR -     Error: Vector storage test failed
+2025-09-09 10:17:37,413 - INFO - ============================================================
+2025-09-09 10:17:37,416 - INFO - ============================================================
+2025-09-09 10:17:37,459 - INFO - Google Drive Service cleaned up successfully
+2025-09-09 10:17:37,462 - INFO - Cleaned up temporary directory: temp\gabriel_agent_vector_412mqqui
+2025-09-09 10:17:37,463 - INFO - Vector Storage Service cleaned up successfully
+2025-09-09 10:17:37,463 - INFO - Stopping Slack Socket Mode...
+2025-09-09 10:17:37,678 - INFO - The connection has been closed (session id: 2cf01a07-32e5-40af-9b74-2026767610ee)
+2025-09-09 10:17:37,679 - INFO - Slack Socket Mode stopped
+2025-09-09 10:17:37,679 - INFO - Slack resources cleaned up
+2025-09-09 10:17:37,691 - INFO - Cleaned up temp directory: C:\Users\gster\AppData\Local\Temp\gabriel_agent_ocr_bwn2q7c4

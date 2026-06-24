@@ -1,0 +1,20 @@
+2025-09-18 19:31:13,817 - app.services.ocr_service - INFO - Google Cloud Vision imported successfully
+2025-09-18 19:31:15,319 - app.services.vector_storage_service - WARNING - Google Cloud Storage not available - FAISS will use local storage only
+2025-09-18 19:31:15,334 - __main__ - INFO - Testing GoogleDriveService...
+2025-09-18 19:31:15,335 - app.services.google_drive - ERROR - Error initializing GoogleDriveService: GOOGLE_APPLICATION_CREDENTIALS not set
+2025-09-18 19:31:15,338 - __main__ - INFO - Testing OCRService...
+2025-09-18 19:31:27,164 - app.services.ocr_service - WARNING - Failed to initialize Google Cloud Vision client: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.
+2025-09-18 19:31:27,179 - __main__ - INFO - Testing VectorStorageService...
+2025-09-18 19:31:27,179 - app.services.vector_storage_service - INFO - Using local FAISS storage
+2025-09-18 19:31:27,180 - app.services.vector_storage_service - INFO - Vector database directory: \app\faiss_db
+2025-09-18 19:31:27,663 - faiss.loader - INFO - Loading faiss with AVX512 support.
+2025-09-18 19:31:27,664 - faiss.loader - INFO - Could not load library with AVX512 support due to:
+ModuleNotFoundError("No module named 'faiss.swigfaiss_avx512'")
+2025-09-18 19:31:27,664 - faiss.loader - INFO - Loading faiss with AVX2 support.
+2025-09-18 19:31:27,971 - faiss.loader - INFO - Successfully loaded faiss with AVX2 support.
+2025-09-18 19:31:27,997 - app.services.vector_storage_service - INFO - Loaded existing FAISS index from \app\faiss_db\documents.faiss
+2025-09-18 19:31:27,997 - app.services.vector_storage_service - INFO - Vector Storage Service initialized successfully with FAISS
+2025-09-18 19:31:27,997 - app.services.ocr_service - INFO - Cleaned up temp directory: C:\Users\gster\AppData\Local\Temp\gabriel_agent_ocr_ltck1zte
+2025-09-18 19:31:27,999 - __main__ - INFO - Testing SlackService...
+2025-09-18 19:31:27,999 - app.services.slack_service - INFO - SlackService instance created
+2025-09-18 19:31:28,463 - __main__ - INFO - Testing main.py service initialization simulation
