@@ -114,6 +114,35 @@ class Settings(BaseSettings):
     )
 
 
+def _assert_prod_invariants(settings: "Settings") -> None:
+    """Fail loud at startup if prod is missing security-critical config.
+
+    Cloud Run sets many env vars Pydantic doesn't know about (PORT, K_REVISION,
+    etc.), so we can't use extra='forbid' to catch typos directly. Instead we
+    explicitly require the auth knobs to be non-empty in prod. A typo like
+    `IAP_AUDIANCE=...` then surfaces as "IAP_AUDIENCE not set" at boot rather
+    than as a silent auth bypass at first request.
+    """
+    if settings.ENVIRONMENT != "prod":
+        return
+    missing: list[str] = []
+    if not settings.OIDC_EXPECTED_AUDIENCE:
+        missing.append("OIDC_EXPECTED_AUDIENCE")
+    if not settings.IAP_AUDIENCE:
+        missing.append("IAP_AUDIENCE")
+    if not settings.ALLOWED_PRINCIPAL_EMAILS:
+        missing.append("ALLOWED_PRINCIPAL_EMAILS")
+    if not settings.ALLOWED_PUBSUB_SERVICE_ACCOUNTS:
+        missing.append("ALLOWED_PUBSUB_SERVICE_ACCOUNTS")
+    if missing:
+        raise RuntimeError(
+            "Production env is missing required security config: "
+            + ", ".join(missing)
+        )
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    _assert_prod_invariants(s)
+    return s

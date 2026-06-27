@@ -73,12 +73,35 @@ def load_secrets_into_env() -> None:
 
     client = secretmanager.SecretManagerServiceClient()
 
-    # Optional aggregate config blob
+    # Optional aggregate config blob.
+    #
+    # SECURITY: keys NOT in this allowlist are silently dropped. Without
+    # this, a poisoned smfo-app-config could set arbitrary process env vars
+    # (PYTHONPATH, GOOGLE_APPLICATION_CREDENTIALS, DEBUG, DB_HOST, etc.) and
+    # escalate to code execution / data exfiltration. Add new keys here
+    # deliberately as new config knobs are needed.
+    _ALLOWED_APP_CONFIG_KEYS = frozenset({
+        "SLACK_DEFAULT_CHANNEL",
+        "VERTEX_AI_LOCATION",
+        "VERTEX_AI_PROJECT_ID",
+        "ANTHROPIC_VERTEX_MODEL",
+        "VERTEX_EMBEDDING_MODEL",
+        "DRIVE_MASTER_FOLDER_ID",
+        "ALLOWED_PRINCIPAL_EMAILS",
+        "ALLOWED_PUBSUB_SERVICE_ACCOUNTS",
+        "OIDC_EXPECTED_AUDIENCE",
+        "IAP_AUDIENCE",
+    })
     app_config = _load_one(client, project_id, "smfo-app-config")
     if app_config:
         try:
             for key, value in json.loads(app_config).items():
                 env_key = key.upper()
+                if env_key not in _ALLOWED_APP_CONFIG_KEYS:
+                    logger.warning(
+                        "smfo_app_config_key_not_allowed", key=env_key
+                    )
+                    continue
                 if not os.environ.get(env_key) and value is not None:
                     os.environ[env_key] = str(value)
         except json.JSONDecodeError:

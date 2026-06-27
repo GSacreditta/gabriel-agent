@@ -13,7 +13,7 @@ from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstra
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import AuditableMixin, Base, TimestampMixin
+from app.models.base import AuditableMixin, Base
 
 
 class AssetClass(Base):
@@ -57,7 +57,7 @@ class AssetSubCategory(Base):
 class TaxonomyAudit(Base, AuditableMixin):
     """Track every taxonomy change for auditability.
 
-    actor changed_by inherited from AuditableMixin.
+    Actor is recorded via created_by / updated_by inherited from AuditableMixin.
     """
 
     __tablename__ = "taxonomy_audit"

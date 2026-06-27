@@ -313,19 +313,16 @@ def _build_sync_engine() -> Engine:
 
 
 def _validate_owner_references(entries: list[dict]) -> None:
-    """Ensure `principal:` values that look like vehicle short_names are defined.
+    """Detect self-referential ownerships before any DB writes.
 
-    We can't check DB-resolved principals here (that needs a connection), but
-    we can pre-check that a short_name reference appears somewhere in the file.
+    Full validation of owner references (does this principal full_name exist?
+    does this short_name resolve to a vehicle?) happens at upsert time against
+    the DB — see _upsert_ownership. This pre-pass only catches the unambiguous
+    self-reference case where a vehicle lists itself as one of its owners.
     """
-    known_short_names = {e["short_name"] for e in entries}
     for entry in entries:
         for own in entry["ownerships"]:
-            ref = own["principal"]
-            # If it looks like a vehicle short_name (matches one in the file),
-            # that's fine. Otherwise it must be a principal full_name and the
-            # DB lookup at upsert time will catch unknowns.
-            if ref in known_short_names and ref == entry["short_name"]:
+            if own["principal"] == entry["short_name"]:
                 raise SeedError(
                     f"vehicle '{entry['short_name']}' references itself in ownerships"
                 )

@@ -6,7 +6,6 @@ to read the DB and identify the user via the IAP signed-header.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from functools import lru_cache
@@ -76,6 +75,7 @@ class WebSettings(BaseSettings):
     # email in a non-signed header (`X-Goog-Authenticated-User-Email`),
     # convenient for display but NOT to be trusted alone.
     IAP_AUDIENCE: Optional[str] = None
+    ALLOWED_PRINCIPAL_EMAILS: str = ""
 
     @property
     def database_url(self) -> str:

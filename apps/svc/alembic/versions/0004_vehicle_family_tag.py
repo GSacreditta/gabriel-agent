@@ -93,12 +93,16 @@ def downgrade() -> None:
               AND vo.effective_to IS NULL
               AND vo.ownership_pct IS NOT NULL
         ),
-        attribution(vehicle_id, principal_id, weight) AS (
-            SELECT vehicle_id, principal_id, pct / 100.0 FROM vehicle_to_principal
+        -- `path` carries visited vehicles so we don't walk back into a cycle.
+        attribution(vehicle_id, principal_id, weight, path) AS (
+            SELECT vehicle_id, principal_id, pct / 100.0, ARRAY[vehicle_id]
+            FROM vehicle_to_principal
             UNION ALL
-            SELECT vv.holder_id, a.principal_id, a.weight * vv.pct / 100.0
+            SELECT vv.holder_id, a.principal_id, a.weight * vv.pct / 100.0,
+                   a.path || vv.holder_id
             FROM vehicle_to_vehicle vv
             JOIN attribution a ON a.vehicle_id = vv.owner_id
+            WHERE NOT (vv.holder_id = ANY(a.path))
         )
         SELECT
             fb.slug         AS branch,

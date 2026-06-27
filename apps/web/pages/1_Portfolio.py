@@ -32,8 +32,8 @@ tab_a, tab_b, tab_c = st.tabs(
 )
 
 
-def _money(col):
-    return st.column_config.NumberColumn(format="$%,.0f")
+def _money(label: str):
+    return st.column_config.NumberColumn(label=label, format="$%,.0f")
 
 
 # ---- View A: SMFO aggregate -------------------------------------------------

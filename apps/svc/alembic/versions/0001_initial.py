@@ -25,6 +25,20 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Extensions required by the schema.
+    #
+    # OPERATIONAL NOTE: CREATE EXTENSION on Cloud SQL requires the
+    # `cloudsqlsuperuser` role. The smfo-svc-runtime service account is a
+    # regular application user — running this migration as that user fails
+    # with "permission denied to create extension". Bootstrap path:
+    #
+    #   1. Connect to Cloud SQL as the `postgres` superuser (gcloud sql connect
+    #      gabriel-agent-db --user=postgres).
+    #   2. Run: CREATE EXTENSION IF NOT EXISTS pgcrypto;
+    #           CREATE EXTENSION IF NOT EXISTS citext;
+    #   3. THEN run `alembic upgrade head` as the smfo-svc-runtime user.
+    #
+    # IF NOT EXISTS makes the statements below safe to re-run if a future
+    # extension is added and step 1-2 has already created the existing ones.
     op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")  # gen_random_uuid
     op.execute("CREATE EXTENSION IF NOT EXISTS citext")
 

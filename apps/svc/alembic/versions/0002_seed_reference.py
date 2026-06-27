@@ -124,12 +124,19 @@ def upgrade() -> None:
         )
 
     for full_name, surname, role, branch_slug, is_approver in _PRINCIPALS:
+        # There is no UNIQUE constraint on principals.full_name (people can
+        # legitimately share names), so we cannot use ON CONFLICT here. Use a
+        # NOT EXISTS guard to keep the seed idempotent on re-runs.
         bind.execute(
             text(
                 "INSERT INTO principals (full_name, surname_at_birth, role, branch_id, is_approver) "
                 "SELECT :full_name, :surname, :role, fb.id, :is_approver "
-                "FROM family_branches fb WHERE fb.slug = :branch_slug "
-                "ON CONFLICT DO NOTHING"
+                "FROM family_branches fb "
+                "WHERE fb.slug = :branch_slug "
+                "  AND NOT EXISTS ("
+                "    SELECT 1 FROM principals "
+                "    WHERE full_name = :full_name AND branch_id = fb.id"
+                "  )"
             ),
             {
                 "full_name": full_name,

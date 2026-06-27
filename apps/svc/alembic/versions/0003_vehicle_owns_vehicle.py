@@ -125,9 +125,13 @@ def upgrade() -> None:
         ),
         -- Walk the chain: every vehicle gets attributed to (principal, weight)
         -- pairs, where weight is the product of percentages along the path.
-        attribution(vehicle_id, principal_id, weight) AS (
+        -- `path` carries the set of visited vehicles so we can refuse to walk
+        -- back into one. The CHECK constraint only prevents direct
+        -- self-ownership; multi-hop cycles would otherwise loop until the
+        -- planner exhausts work_mem. This guard makes the view DoS-safe.
+        attribution(vehicle_id, principal_id, weight, path) AS (
             -- Base case: direct principal ownership of this vehicle.
-            SELECT vehicle_id, principal_id, pct / 100.0
+            SELECT vehicle_id, principal_id, pct / 100.0, ARRAY[vehicle_id]
             FROM vehicle_to_principal
 
             UNION ALL
@@ -135,9 +139,11 @@ def upgrade() -> None:
             -- Recursive case: vehicle V is owned (pct%) by vehicle V', and V'
             -- is in turn attributed to some principal at weight W. So V flows
             -- to that principal at W * pct/100.
-            SELECT vv.holder_id, a.principal_id, a.weight * vv.pct / 100.0
+            SELECT vv.holder_id, a.principal_id, a.weight * vv.pct / 100.0,
+                   a.path || vv.holder_id
             FROM vehicle_to_vehicle vv
             JOIN attribution a ON a.vehicle_id = vv.owner_id
+            WHERE NOT (vv.holder_id = ANY(a.path))
         )
         SELECT
             fb.slug         AS branch,
