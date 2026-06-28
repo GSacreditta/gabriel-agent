@@ -1,0 +1,8 @@
+streamlit>=1.39.0
+pandas>=2.2.0
+sqlalchemy>=2.0.30
+psycopg2-binary>=2.9.9
+pydantic>=2.8.0,<3.0.0
+pydantic-settings>=2.4.0
+google-cloud-secret-manager>=2.20.0
+google-auth>=2.34.0

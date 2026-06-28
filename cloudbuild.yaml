@@ -44,10 +44,109 @@ steps:
     - '--set-cloudsql-instances'
     - '$PROJECT_ID:us-east1:gabriel-agent-db'
 
+  # ====================================================================
+  # smfo-svc — the SMFO rebuild service (parallel deploy alongside gabriel-agent)
+  # build context: apps/svc/   Dockerfile: apps/svc/Dockerfile   port: 8082
+  # NO --allow-unauthenticated — webhook callers (Pub/Sub) authenticate via OIDC,
+  # Streamlit→API authenticates via Google ID token.
+  # ====================================================================
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/smfo-svc:$BUILD_ID', '-t', 'gcr.io/$PROJECT_ID/smfo-svc:latest', '-f', 'apps/svc/Dockerfile', 'apps/svc/']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/smfo-svc:$BUILD_ID']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/smfo-svc:latest']
+
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+    - 'run'
+    - 'deploy'
+    - 'smfo-svc'
+    - '--image'
+    - 'gcr.io/$PROJECT_ID/smfo-svc:$BUILD_ID'
+    - '--region'
+    - 'us-east1'
+    - '--platform'
+    - 'managed'
+    - '--no-allow-unauthenticated'
+    - '--service-account'
+    - 'smfo-svc-runtime@$PROJECT_ID.iam.gserviceaccount.com'
+    - '--memory'
+    - '2Gi'
+    - '--cpu'
+    - '2'
+    - '--timeout'
+    - '900'
+    - '--concurrency'
+    - '40'
+    - '--max-instances'
+    - '4'
+    - '--min-instances'
+    - '0'
+    - '--port'
+    - '8082'
+    - '--set-env-vars'
+    - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,USE_SECRET_MANAGER=true,ENVIRONMENT=prod,VERTEX_AI_LOCATION=us-east5,SLACK_DEFAULT_CHANNEL=#sm18_fo,DEBUG=false,DB_CONNECTION_NAME=$PROJECT_ID:us-east1:gabriel-agent-db,DB_HOST=/cloudsql/$PROJECT_ID:us-east1:gabriel-agent-db,FAISS_PERSIST_DIRECTORY=/app/faiss_db,FAISS_USE_CLOUD_STORAGE=true,FAISS_BUCKET_NAME=gabriel-agent-faiss'
+    - '--set-cloudsql-instances'
+    - '$PROJECT_ID:us-east1:gabriel-agent-db'
+
+  # ====================================================================
+  # smfo-web — the Streamlit UI (behind IAP, read-only against Cloud SQL)
+  # build context: apps/web/   Dockerfile: apps/web/Dockerfile   port: 8501
+  # NO --allow-unauthenticated. IAP + Cloud Load Balancer fronts this service.
+  # ====================================================================
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/smfo-web:$BUILD_ID', '-t', 'gcr.io/$PROJECT_ID/smfo-web:latest', '-f', 'apps/web/Dockerfile', 'apps/web/']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/smfo-web:$BUILD_ID']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/smfo-web:latest']
+
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+    - 'run'
+    - 'deploy'
+    - 'smfo-web'
+    - '--image'
+    - 'gcr.io/$PROJECT_ID/smfo-web:$BUILD_ID'
+    - '--region'
+    - 'us-east1'
+    - '--platform'
+    - 'managed'
+    - '--no-allow-unauthenticated'
+    - '--service-account'
+    - 'smfo-web-runtime@$PROJECT_ID.iam.gserviceaccount.com'
+    - '--memory'
+    - '1Gi'
+    - '--cpu'
+    - '1'
+    - '--timeout'
+    - '300'
+    - '--concurrency'
+    - '20'
+    - '--max-instances'
+    - '2'
+    - '--min-instances'
+    - '0'
+    - '--port'
+    - '8501'
+    - '--set-env-vars'
+    - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,USE_SECRET_MANAGER=true,ENVIRONMENT=prod,DB_CONNECTION_NAME=$PROJECT_ID:us-east1:gabriel-agent-db,DB_HOST=/cloudsql/$PROJECT_ID:us-east1:gabriel-agent-db'
+    - '--set-cloudsql-instances'
+    - '$PROJECT_ID:us-east1:gabriel-agent-db'
+
 # Store images in Container Registry
 images:
   - 'gcr.io/$PROJECT_ID/gabriel-agent:$BUILD_ID'
   - 'gcr.io/$PROJECT_ID/gabriel-agent:latest'
+  - 'gcr.io/$PROJECT_ID/smfo-svc:$BUILD_ID'
+  - 'gcr.io/$PROJECT_ID/smfo-svc:latest'
+  - 'gcr.io/$PROJECT_ID/smfo-web:$BUILD_ID'
+  - 'gcr.io/$PROJECT_ID/smfo-web:latest'
 
 # Build options
 options:
