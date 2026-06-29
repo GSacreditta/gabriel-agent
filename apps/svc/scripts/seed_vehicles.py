@@ -48,6 +48,54 @@ class SeedError(Exception):
 
 
 # ---------------------------------------------------------------------------
+# Secret Manager (for Cloud Run Jobs path)
+# ---------------------------------------------------------------------------
+
+
+def _fetch_yaml_from_secret(secret_name: str) -> Path:
+    """Resolve `--from-secret SECRET_NAME` to a local file path.
+
+    Pulls the latest version from GCP Secret Manager and writes it to a
+    short-lived file under /tmp. Caller passes the returned Path to the
+    existing yaml-loading code as if it were a local --config argument.
+
+    Requires GOOGLE_CLOUD_PROJECT in the environment and the runtime SA to
+    have `roles/secretmanager.secretAccessor` on the project.
+    """
+    import os
+    import tempfile
+
+    project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
+    if not project_id:
+        raise SeedError(
+            "--from-secret requires GOOGLE_CLOUD_PROJECT in the environment"
+        )
+
+    try:
+        from google.cloud import secretmanager
+    except ImportError as exc:
+        raise SeedError(
+            "google-cloud-secret-manager not installed (should be in requirements.txt)"
+        ) from exc
+
+    client = secretmanager.SecretManagerServiceClient()
+    name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+    try:
+        response = client.access_secret_version(request={"name": name})
+    except Exception as exc:
+        raise SeedError(f"Failed to fetch secret '{secret_name}': {exc}") from exc
+
+    payload = response.payload.data.decode("utf-8")
+    # NamedTemporaryFile keeps the descriptor open if delete=False; we just want
+    # the path. The /tmp file lives for the duration of the process (Cloud Run
+    # Job containers are ephemeral anyway).
+    fd, path = tempfile.mkstemp(prefix="vehicles-", suffix=".yaml", text=True)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(payload)
+    return Path(path)
+
+
+# ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
 
@@ -337,11 +385,30 @@ def main() -> int:
         help=f"Path to vehicles.yaml (default: {_DEFAULT_CONFIG})",
     )
     parser.add_argument(
+        "--from-secret",
+        metavar="SECRET_NAME",
+        default=None,
+        help=(
+            "Fetch the YAML from Google Secret Manager instead of a local file. "
+            "Uses GOOGLE_CLOUD_PROJECT + the runtime SA's secretAccessor role. "
+            "Mutually exclusive with --config; intended for Cloud Run Jobs."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate the YAML and DB references; do not write.",
     )
     args = parser.parse_args()
+
+    # --from-secret resolves to a tempfile path, then falls through to the
+    # normal file-reading path. Keeps the rest of the function unchanged.
+    if args.from_secret:
+        try:
+            args.config = _fetch_yaml_from_secret(args.from_secret)
+        except SeedError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
 
     if not args.config.exists():
         print(f"ERROR: config not found: {args.config}", file=sys.stderr)
