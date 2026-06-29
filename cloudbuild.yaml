@@ -88,7 +88,13 @@ steps:
     - '--port'
     - '8082'
     - '--set-env-vars'
-    - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,USE_SECRET_MANAGER=true,ENVIRONMENT=prod,VERTEX_AI_LOCATION=us-east5,SLACK_DEFAULT_CHANNEL=#sm18_fo,DEBUG=false,DB_CONNECTION_NAME=$PROJECT_ID:us-east1:gabriel-agent-db,DB_HOST=/cloudsql/$PROJECT_ID:us-east1:gabriel-agent-db,FAISS_PERSIST_DIRECTORY=/app/faiss_db,FAISS_USE_CLOUD_STORAGE=true,FAISS_BUCKET_NAME=gabriel-agent-faiss'
+    # ENVIRONMENT=staging until IAP lands — flip back to 'prod' once
+    # OIDC_EXPECTED_AUDIENCE / IAP_AUDIENCE / ALLOWED_* are set, so the
+    # _assert_prod_invariants startup check engages.
+    # DB_NAME=smfo overrides the Secret Manager `db-name` value (which
+    # points at the legacy `gabriel_agent` DB) so the new service uses
+    # its own database.
+    - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,USE_SECRET_MANAGER=true,ENVIRONMENT=staging,VERTEX_AI_LOCATION=us-east5,SLACK_DEFAULT_CHANNEL=#sm18_fo,DEBUG=false,DB_CONNECTION_NAME=$PROJECT_ID:us-east1:gabriel-agent-db,DB_HOST=/cloudsql/$PROJECT_ID:us-east1:gabriel-agent-db,DB_NAME=smfo,FAISS_PERSIST_DIRECTORY=/app/faiss_db,FAISS_USE_CLOUD_STORAGE=true,FAISS_BUCKET_NAME=gabriel-agent-faiss'
     - '--set-cloudsql-instances'
     - '$PROJECT_ID:us-east1:gabriel-agent-db'
 
@@ -135,7 +141,9 @@ steps:
     - '--port'
     - '8501'
     - '--set-env-vars'
-    - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,USE_SECRET_MANAGER=true,ENVIRONMENT=prod,DB_CONNECTION_NAME=$PROJECT_ID:us-east1:gabriel-agent-db,DB_HOST=/cloudsql/$PROJECT_ID:us-east1:gabriel-agent-db'
+    # See smfo-svc block above for the ENVIRONMENT=staging + DB_NAME=smfo
+    # rationale (IAP deferred; isolated from legacy DB).
+    - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,USE_SECRET_MANAGER=true,ENVIRONMENT=staging,DB_CONNECTION_NAME=$PROJECT_ID:us-east1:gabriel-agent-db,DB_HOST=/cloudsql/$PROJECT_ID:us-east1:gabriel-agent-db,DB_NAME=smfo'
     - '--set-cloudsql-instances'
     - '$PROJECT_ID:us-east1:gabriel-agent-db'
 
