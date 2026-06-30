@@ -81,8 +81,10 @@ steps:
     - 'smfo-svc-runtime@$PROJECT_ID.iam.gserviceaccount.com'
     - '--command'
     - 'python'
-    - '--args'
-    - '-m,alembic,upgrade,head'
+    # gcloud's parser sees the leading '-' in '-m,...' and treats it as a new
+    # flag if --args is split across two argv items. Combining with '=' forces
+    # it to be the value of --args.
+    - '--args=-m,alembic,upgrade,head'
     - '--task-timeout'
     - '600s'
     - '--max-retries'
@@ -165,8 +167,8 @@ steps:
     - 'smfo-svc-runtime@$PROJECT_ID.iam.gserviceaccount.com'
     - '--command'
     - 'python'
-    - '--args'
-    - '-m,scripts.seed_vehicles,--from-secret,smfo-vehicles-yaml'
+    # See migrate job above re: gcloud arg parsing with leading '-'.
+    - '--args=-m,scripts.seed_vehicles,--from-secret,smfo-vehicles-yaml'
     - '--task-timeout'
     - '300s'
     - '--max-retries'
