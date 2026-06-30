@@ -59,6 +59,50 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/smfo-svc:latest']
 
+  # ====================================================================
+  # smfo-migrate Cloud Run Job — alembic upgrade against the smfo DB.
+  # Deploy updates the job's image to the freshly-built tag, then execute
+  # --wait blocks the build until migration finishes. A failed migration
+  # halts the build so the smfo-svc deploy below never runs against a
+  # half-applied schema.
+  # ====================================================================
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deploy-smfo-migrate-job'
+    args:
+    - 'run'
+    - 'jobs'
+    - 'deploy'
+    - 'smfo-migrate'
+    - '--image'
+    - 'gcr.io/$PROJECT_ID/smfo-svc:$BUILD_ID'
+    - '--region'
+    - 'us-east1'
+    - '--service-account'
+    - 'smfo-svc-runtime@$PROJECT_ID.iam.gserviceaccount.com'
+    - '--command'
+    - 'python'
+    - '--args'
+    - '-m,alembic,upgrade,head'
+    - '--task-timeout'
+    - '600s'
+    - '--max-retries'
+    - '1'
+    - '--set-cloudsql-instances'
+    - '$PROJECT_ID:us-east1:gabriel-agent-db'
+    - '--set-env-vars'
+    - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,USE_SECRET_MANAGER=true,ENVIRONMENT=staging,DB_CONNECTION_NAME=$PROJECT_ID:us-east1:gabriel-agent-db,DB_HOST=/cloudsql/$PROJECT_ID:us-east1:gabriel-agent-db,DB_NAME=smfo'
+
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'execute-smfo-migrate-job'
+    args:
+    - 'run'
+    - 'jobs'
+    - 'execute'
+    - 'smfo-migrate'
+    - '--region'
+    - 'us-east1'
+    - '--wait'
+
   - name: 'gcr.io/cloud-builders/gcloud'
     args:
     - 'run'
@@ -97,6 +141,40 @@ steps:
     - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,USE_SECRET_MANAGER=true,ENVIRONMENT=staging,VERTEX_AI_LOCATION=us-east5,SLACK_DEFAULT_CHANNEL=#sm18_fo,DEBUG=false,DB_CONNECTION_NAME=$PROJECT_ID:us-east1:gabriel-agent-db,DB_HOST=/cloudsql/$PROJECT_ID:us-east1:gabriel-agent-db,DB_NAME=smfo,FAISS_PERSIST_DIRECTORY=/app/faiss_db,FAISS_USE_CLOUD_STORAGE=true,FAISS_BUCKET_NAME=gabriel-agent-faiss'
     - '--set-cloudsql-instances'
     - '$PROJECT_ID:us-east1:gabriel-agent-db'
+
+  # ====================================================================
+  # smfo-seed-vehicles Cloud Run Job — manual trigger only.
+  # Reads vehicles.yaml from Secret Manager (secret name: smfo-vehicles-yaml)
+  # and upserts into vehicles + vehicle_ownerships. Idempotent on short_name.
+  # Operator runs after first deploy + any vehicles.yaml change:
+  #   gcloud run jobs execute smfo-seed-vehicles --wait \
+  #     --project=$PROJECT_ID --region=us-east1
+  # ====================================================================
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deploy-smfo-seed-vehicles-job'
+    args:
+    - 'run'
+    - 'jobs'
+    - 'deploy'
+    - 'smfo-seed-vehicles'
+    - '--image'
+    - 'gcr.io/$PROJECT_ID/smfo-svc:$BUILD_ID'
+    - '--region'
+    - 'us-east1'
+    - '--service-account'
+    - 'smfo-svc-runtime@$PROJECT_ID.iam.gserviceaccount.com'
+    - '--command'
+    - 'python'
+    - '--args'
+    - '-m,scripts.seed_vehicles,--from-secret,smfo-vehicles-yaml'
+    - '--task-timeout'
+    - '300s'
+    - '--max-retries'
+    - '1'
+    - '--set-cloudsql-instances'
+    - '$PROJECT_ID:us-east1:gabriel-agent-db'
+    - '--set-env-vars'
+    - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,USE_SECRET_MANAGER=true,ENVIRONMENT=staging,DB_CONNECTION_NAME=$PROJECT_ID:us-east1:gabriel-agent-db,DB_HOST=/cloudsql/$PROJECT_ID:us-east1:gabriel-agent-db,DB_NAME=smfo'
 
   # ====================================================================
   # smfo-web — the Streamlit UI (behind IAP, read-only against Cloud SQL)
