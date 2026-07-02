@@ -249,8 +249,8 @@ class SchedulerService:
             db_service = await get_database_service()
             
             # Query processed_files table
-            query = "SELECT id FROM processed_files WHERE file_id = %s"
-            result = await db_service.execute_query(query, (file_id,))
+            query = "SELECT id FROM processed_files WHERE file_id = :file_id"
+            result = await db_service.execute_query(query, {"file_id": file_id})
             
             return len(result) > 0
             
@@ -375,13 +375,13 @@ class SchedulerService:
     async def _check_existing_entity(self, entity_name: str) -> dict:
         """Check if entity already exists in database"""
         try:
-            from ..core.database.service import DatabaseService
-            
-            db_service = DatabaseService()
-            
+            from ..core.database.service import get_database_service
+
+            db_service = await get_database_service()
+
             # Check exact match first
-            exact_query = "SELECT id, name, google_drive_folder_id FROM entities WHERE name = %s"
-            exact_result = await db_service.execute_query(exact_query, (entity_name,))
+            exact_query = "SELECT id, name, google_drive_folder_id FROM entities WHERE name = :name"
+            exact_result = await db_service.execute_query(exact_query, {"name": entity_name})
             
             if exact_result:
                 return {
@@ -405,10 +405,10 @@ class SchedulerService:
     async def _store_pending_workflow(self, workflow_state: dict):
         """Store workflow state while waiting for HDL approval"""
         try:
-            from ..core.database.service import DatabaseService
-            
-            db_service = DatabaseService()
-            
+            from ..core.database.service import get_database_service
+
+            db_service = await get_database_service()
+
             # Create processed_files table if it doesn't exist
             create_table_query = """
             CREATE TABLE IF NOT EXISTS processed_files (
@@ -422,31 +422,31 @@ class SchedulerService:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
-            
+
             await db_service.execute_command(create_table_query)
-            
+
             # Store the workflow state
             insert_query = """
             INSERT INTO processed_files (file_id, file_name, entity_name, analysis, status)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (file_id) 
-            DO UPDATE SET 
+            VALUES (:file_id, :file_name, :entity_name, :analysis, :status)
+            ON CONFLICT (file_id)
+            DO UPDATE SET
                 file_name = EXCLUDED.file_name,
                 entity_name = EXCLUDED.entity_name,
                 analysis = EXCLUDED.analysis,
                 status = EXCLUDED.status,
                 updated_at = CURRENT_TIMESTAMP
             """
-            
+
             await db_service.execute_command(
                 insert_query,
-                (
-                    workflow_state["file_id"],
-                    workflow_state["file_name"],
-                    workflow_state["entity_name"],
-                    json.dumps(workflow_state["analysis"]) if workflow_state.get("analysis") else None,
-                    workflow_state["status"]
-                )
+                {
+                    "file_id": workflow_state["file_id"],
+                    "file_name": workflow_state["file_name"],
+                    "entity_name": workflow_state["entity_name"],
+                    "analysis": json.dumps(workflow_state["analysis"]) if workflow_state.get("analysis") else None,
+                    "status": workflow_state["status"],
+                }
             )
             
             logger.info(f"Stored pending workflow for file: {workflow_state['file_name']}")
@@ -569,14 +569,14 @@ File will remain in master folder until approved."""
     async def _create_or_get_entity(self, entity_name: str, analysis: dict) -> dict:
         """Create new entity or get existing one"""
         try:
-            from ..core.database.service import DatabaseService
-            
-            db_service = DatabaseService()
-            
+            from ..core.database.service import get_database_service
+
+            db_service = await get_database_service()
+
             # Check if entity exists
-            query = "SELECT id, name, google_drive_folder_id FROM entities WHERE name = %s"
-            result = await db_service.execute_query(query, (entity_name,))
-            
+            query = "SELECT id, name, google_drive_folder_id FROM entities WHERE name = :name"
+            result = await db_service.execute_query(query, {"name": entity_name})
+
             if result:
                 return {
                     "id": result[0]["id"],
@@ -587,15 +587,17 @@ File will remain in master folder until approved."""
                 # Create new entity
                 entity_type = self._determine_entity_type(entity_name, analysis)
                 description = analysis.get("summary", f"Entity created from document analysis")
-                
+
                 insert_query = """
-                    INSERT INTO entities (name, entity_type, description, created_at) 
-                    VALUES (%s, %s, %s, NOW()) 
+                    INSERT INTO entities (name, entity_type, description, created_at)
+                    VALUES (:name, :entity_type, :description, NOW())
                     RETURNING id
                 """
-                
-                insert_result = await db_service.execute_query(
-                    insert_query, (entity_name, entity_type, description)
+
+                # execute_returning commits (execute_query would roll back the INSERT)
+                insert_result = await db_service.execute_returning(
+                    insert_query,
+                    {"name": entity_name, "entity_type": entity_type, "description": description},
                 )
                 
                 if insert_result:
@@ -618,37 +620,45 @@ File will remain in master folder until approved."""
                                             entity_folder_id: str, analysis: dict):
         """Update database after approval with final paths"""
         try:
-            from ..core.database.service import DatabaseService
-            
-            db_service = DatabaseService()
-            
-            # Update processed_files table
+            from ..core.database.service import get_database_service
+
+            db_service = await get_database_service()
+
+            # Update processed_files table (execute_command commits)
             update_processed_query = """
-                UPDATE processed_files 
-                SET entity_id = %s, processing_status = %s, current_folder_id = %s, approved_at = NOW()
-                WHERE file_id = %s
+                UPDATE processed_files
+                SET entity_id = :entity_id, processing_status = :status, current_folder_id = :folder_id, approved_at = NOW()
+                WHERE file_id = :file_id
             """
-            
-            await db_service.execute_query(update_processed_query, (
-                entity_info["id"], "approved", entity_folder_id, file_id
-            ))
-            
+
+            await db_service.execute_command(update_processed_query, {
+                "entity_id": entity_info["id"],
+                "status": "approved",
+                "folder_id": entity_folder_id,
+                "file_id": file_id,
+            })
+
             # Insert into document_metadata table
             doc_metadata_query = """
-                INSERT INTO document_metadata 
-                (entity_id, file_id, file_name, file_path, document_type, extraction_method, confidence_score, created_at) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                INSERT INTO document_metadata
+                (entity_id, file_id, file_name, file_path, document_type, extraction_method, confidence_score, created_at)
+                VALUES (:entity_id, :file_id, :file_name, :file_path, :document_type, :extraction_method, :confidence_score, NOW())
             """
-            
+
             file_path = f"Entity - {entity_info['name']}/{file_name}"
             doc_type = analysis.get("document_type", "Document")
             extraction_method = analysis.get("extraction_method", "unknown")
             confidence = analysis.get("entity_confidence", 0.0)
-            
-            await db_service.execute_query(doc_metadata_query, (
-                entity_info["id"], file_id, file_name, file_path, 
-                doc_type, extraction_method, confidence
-            ))
+
+            await db_service.execute_command(doc_metadata_query, {
+                "entity_id": entity_info["id"],
+                "file_id": file_id,
+                "file_name": file_name,
+                "file_path": file_path,
+                "document_type": doc_type,
+                "extraction_method": extraction_method,
+                "confidence_score": confidence,
+            })
             
             logger.info(f"Database updated after approval for {file_name}")
             
@@ -674,20 +684,21 @@ File will remain in master folder until approved."""
     async def _mark_workflow_rejected(self, workflow_state: dict):
         """Mark workflow as rejected in database"""
         try:
-            from ..core.database.service import DatabaseService
-            
-            db_service = DatabaseService()
-            
-            # Update processed_files table to rejected status
+            from ..core.database.service import get_database_service
+
+            db_service = await get_database_service()
+
+            # Update processed_files table to rejected status (execute_command commits)
             update_query = """
-                UPDATE processed_files 
-                SET processing_status = %s, approved_at = NOW()
-                WHERE file_id = %s
+                UPDATE processed_files
+                SET processing_status = :status, approved_at = NOW()
+                WHERE file_id = :file_id
             """
-            
-            await db_service.execute_query(update_query, (
-                "rejected", workflow_state["file_id"]
-            ))
+
+            await db_service.execute_command(update_query, {
+                "status": "rejected",
+                "file_id": workflow_state["file_id"],
+            })
             
             logger.info(f"Marked workflow as rejected for {workflow_state['file_name']}")
             
@@ -752,12 +763,12 @@ File will remain in master folder until approved."""
     async def _update_entity_folder_id(self, entity_id: int, folder_id: str):
         """Update entity with Google Drive folder ID"""
         try:
-            from ..core.database.service import DatabaseService
-            
-            db_service = DatabaseService()
-            
-            query = "UPDATE entities SET google_drive_folder_id = %s WHERE id = %s"
-            await db_service.execute_query(query, (folder_id, entity_id))
+            from ..core.database.service import get_database_service
+
+            db_service = await get_database_service()
+
+            query = "UPDATE entities SET google_drive_folder_id = :folder_id WHERE id = :entity_id"
+            await db_service.execute_command(query, {"folder_id": folder_id, "entity_id": entity_id})
             
             logger.info(f"Updated entity {entity_id} with folder ID {folder_id}")
             

@@ -15,6 +15,7 @@ class BaseAgent(ABC):
         self.agent_type = agent_type
         self.logger = logging.getLogger(f"agent.{agent_type}")
         self.activity_log = []
+        self.coordinator = None
         
     @abstractmethod
     async def get_capabilities(self) -> List[str]:
@@ -34,6 +35,23 @@ class BaseAgent(ABC):
     async def receive_message(self, source_agent: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Receive and handle messages from other agents"""
         return await self.handle_message(source_agent, message)
+
+    async def send_message(self, target_agent: str, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Send a message to another agent, routed through the coordinator.
+
+        Agents (extraction, HDL, storage, file management) call this to reach
+        each other; it delegates to AgentCoordinator.route_message. Returns an
+        error dict instead of raising so callers can degrade gracefully.
+        """
+        if self.coordinator is None:
+            self.logger.error(
+                f"[{self.agent_type}] Cannot send message to {target_agent}: no coordinator set"
+            )
+            return {
+                "status": "error",
+                "message": f"{self.agent_type} has no coordinator reference - cannot reach {target_agent}",
+            }
+        return await self.coordinator.route_message(self.agent_type, target_agent, message)
     
     def log_activity(self, activity: str, details: Dict[str, Any] = None):
         """Log agent activity"""

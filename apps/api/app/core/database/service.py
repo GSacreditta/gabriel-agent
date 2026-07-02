@@ -143,24 +143,44 @@ class DatabaseService:
         finally:
             await session.close()
     
-    async def execute_query(self, query: str, params: Optional[Tuple] = None) -> List[Dict[str, Any]]:
-        """Execute a SELECT query and return results"""
+    async def execute_query(self, query: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Execute a SELECT query and return results.
+
+        NOTE: SQLAlchemy text() requires :named bind parameters with a dict —
+        psycopg2-style %s placeholders with tuples do NOT work and raise
+        "List argument must consist only of dictionaries".
+        """
         if not self.session_maker:
             raise RuntimeError("Database service not initialized")
-        
+
         async with self.get_session() as session:
             result = await session.execute(text(query), params)
             return [dict(row._mapping) for row in result.fetchall()]
-    
-    async def execute_command(self, query: str, params: Optional[Tuple] = None) -> int:
+
+    async def execute_command(self, query: str, params: Optional[Dict[str, Any]] = None) -> int:
         """Execute an INSERT/UPDATE/DELETE command and return affected rows"""
         if not self.session_maker:
             raise RuntimeError("Database service not initialized")
-        
+
         async with self.get_session() as session:
             result = await session.execute(text(query), params)
             await session.commit()
             return result.rowcount
+
+    async def execute_returning(self, query: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Execute a mutating statement with RETURNING and commit, returning rows.
+
+        execute_query never commits (SELECT-only) and execute_command commits
+        but discards rows — INSERT ... RETURNING id needs both.
+        """
+        if not self.session_maker:
+            raise RuntimeError("Database service not initialized")
+
+        async with self.get_session() as session:
+            result = await session.execute(text(query), params)
+            rows = [dict(row._mapping) for row in result.fetchall()]
+            await session.commit()
+            return rows
     
     async def close(self):
         """Close database connections"""

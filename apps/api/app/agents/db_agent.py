@@ -172,49 +172,43 @@ class DBAgent(BaseAgent):
                 return {"status": "success", "result": result}
                 
             elif action == "execute_query":
-                # Handle raw SQL queries
+                # Handle raw SQL queries. SQLAlchemy text() requires :named
+                # binds with a dict — callers must send params as a dict.
                 query = data.get('query')
-                params = data.get('params', [])
-                # Convert list to tuple but keep datetime objects for timestamp columns
-                if params:
-                    converted_params = []
-                    for param in params:
-                        # Keep datetime objects as-is for database timestamp columns
-                        converted_params.append(param)
-                    params_tuple = tuple(converted_params)
-                else:
-                    params_tuple = None
-                    
+                params = data.get('params') or None
+                if params is not None and not isinstance(params, dict):
+                    return {
+                        "status": "error",
+                        "message": "execute_query params must be a dict of named binds (:name), not a list/tuple",
+                    }
+
                 # Ensure connection before executing
                 if not await self.ensure_database_connection(strict=strict):
                     if strict:
                         raise DatabaseUnavailableError("execute_query")
                     return {"status": "error", "message": "Database unavailable"}
-                    
-                result = await self.db_service.execute_query(query, params_tuple)
+
+                result = await self.db_service.execute_query(query, params)
                 return {"status": "success", "result": result}
-                
+
             elif action == "execute_command":
-                # Handle raw SQL commands (INSERT, UPDATE, DELETE)
+                # Handle raw SQL commands (INSERT, UPDATE, DELETE). Same named-
+                # bind contract as execute_query.
                 query = data.get('query')
-                params = data.get('params', [])
-                # Convert list to tuple but keep datetime objects for timestamp columns
-                if params:
-                    converted_params = []
-                    for param in params:
-                        # Keep datetime objects as-is for database timestamp columns
-                        converted_params.append(param)
-                    params_tuple = tuple(converted_params)
-                else:
-                    params_tuple = None
-                    
+                params = data.get('params') or None
+                if params is not None and not isinstance(params, dict):
+                    return {
+                        "status": "error",
+                        "message": "execute_command params must be a dict of named binds (:name), not a list/tuple",
+                    }
+
                 # Ensure connection before executing
                 if not await self.ensure_database_connection(strict=strict):
                     if strict:
                         raise DatabaseUnavailableError("execute_command")
                     return {"status": "error", "message": "Database unavailable"}
-                    
-                result = await self.db_service.execute_command(query, params_tuple)
+
+                result = await self.db_service.execute_command(query, params)
                 return {"status": "success", "result": result}
                 
             else:
