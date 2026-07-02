@@ -40,7 +40,10 @@ steps:
     - '--port'
     - '8081'
     - '--set-env-vars'
-    - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,USE_SECRET_MANAGER=true,FAISS_PERSIST_DIRECTORY=/app/faiss_db,FAISS_USE_CLOUD_STORAGE=true,FAISS_BUCKET_NAME=gabriel-agent-faiss,SLACK_DEFAULT_CHANNEL=#sm18_fo,DEBUG=false,DB_CONNECTION_NAME=$PROJECT_ID:us-east1:gabriel-agent-db'
+    # GMAIL_DELEGATED_USER enables Gmail via domain-wide delegation (the sm18-pa
+    # service account is authorized for the Gmail scopes in the sternmz18.com
+    # Workspace Admin console — no OAuth token, no expiry).
+    - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,USE_SECRET_MANAGER=true,FAISS_PERSIST_DIRECTORY=/app/faiss_db,FAISS_USE_CLOUD_STORAGE=true,FAISS_BUCKET_NAME=gabriel-agent-faiss,SLACK_DEFAULT_CHANNEL=#sm18_fo,DEBUG=false,DB_CONNECTION_NAME=$PROJECT_ID:us-east1:gabriel-agent-db,GMAIL_DELEGATED_USER=gabriel@sternmz18.com'
     - '--set-cloudsql-instances'
     - '$PROJECT_ID:us-east1:gabriel-agent-db'
 
