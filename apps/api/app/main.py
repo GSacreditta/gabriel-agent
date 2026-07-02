@@ -619,6 +619,31 @@ async def initialize_services_enhanced():
             logger.error(f"Failed to initialize Similarity service: {e}")
             service_errors["similarity_service"] = str(e)
             initialization_results["similarity_service"] = False
+
+        # Email scanning service (Gmail via domain-wide delegation; optional)
+        try:
+            if os.environ.get('GMAIL_DELEGATED_USER') or os.environ.get('GMAIL_CLIENT_ID'):
+                from app.services.email_scanning_service import EmailScanningService
+                email_scanner = EmailScanningService()
+
+                async def init_email_scanning():
+                    ok = await email_scanner.initialize(
+                        agent_coordinator=services.get("agent_coordinator"),
+                        drive_service=services.get("drive_service"),
+                        vector_service=services.get("vector_service"),
+                    )
+                    if not ok:
+                        raise Exception("EmailScanningService.initialize() returned False")
+                    return email_scanner
+
+                success = await initialize_service("email_scanning", init_email_scanning)
+                initialization_results["email_scanning"] = success
+            else:
+                logger.info("[INFO] Email scanning not configured (GMAIL_DELEGATED_USER/GMAIL_CLIENT_ID unset) - skipping")
+        except Exception as e:
+            logger.error(f"Failed to initialize Email Scanning service: {e}")
+            service_errors["email_scanning"] = str(e)
+            initialization_results["email_scanning"] = False
         
     except Exception as e:
         logger.error(f"Critical error during service initialization: {e}")

@@ -18,6 +18,7 @@ import tempfile
 import json
 
 from google.auth.transport.requests import Request
+from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
@@ -104,62 +105,100 @@ class EmailScanningService:
             logger.error(f"❌ Failed to initialize Email Scanning Service: {e}")
             return False
     
+    def _get_delegated_credentials(self, delegated_user: str):
+        """Build Gmail credentials via domain-wide delegation (Workspace only).
+
+        The service account (sm18-pa) must be authorized for the Gmail scopes in
+        the Workspace Admin console (Security → API controls → Domain-wide
+        delegation) using its OAuth2 client ID. No browser flow, no token expiry
+        — this is the production path on Cloud Run.
+        """
+        key_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if not key_path or not os.path.exists(key_path):
+            raise ValueError(
+                "GMAIL_DELEGATED_USER is set but no service account key is "
+                "available (GOOGLE_APPLICATION_CREDENTIALS missing or invalid)"
+            )
+        sa_creds = service_account.Credentials.from_service_account_file(
+            key_path, scopes=self.SCOPES
+        )
+        return sa_creds.with_subject(delegated_user)
+
     async def _authenticate_gmail(self):
-        """Authenticate with Gmail API using OAuth2."""
+        """Authenticate with Gmail API.
+
+        Preferred: domain-wide delegation via GMAIL_DELEGATED_USER (production).
+        Fallback: OAuth2 installed-app flow with a local token file (dev only —
+        the interactive browser flow is refused on Cloud Run).
+        """
         try:
             creds = None
-            credentials_dir = os.getenv('GMAIL_CREDENTIALS_DIR', 'config/credentials')
-            token_file = os.path.join(credentials_dir, 'gmail_token.json')
-            
-            # Get OAuth credentials from environment variables
-            client_id = os.getenv('GMAIL_CLIENT_ID')
-            client_secret = os.getenv('GMAIL_CLIENT_SECRET')
-            
-            logger.info(f"🔑 Authenticating Gmail API...")
-            logger.info(f"   📁 Token file: {token_file}")
-            logger.info(f"   🆔 Client ID: {client_id[:20]}..." if client_id else "   ❌ No Client ID found")
-            
-            if not client_id or not client_secret:
-                raise ValueError(
-                    "Gmail OAuth credentials not found in environment variables.\n"
-                    "Please set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET in your .env file"
-                )
-            
-            # Load existing token
-            if os.path.exists(token_file):
-                logger.info("📄 Loading existing Gmail token...")
-                creds = Credentials.from_authorized_user_file(token_file, self.SCOPES)
-            
-            # If no valid credentials, go through OAuth flow
-            if not creds or not creds.valid:
-                if creds and creds.expired and creds.refresh_token:
-                    logger.info("🔄 Refreshing expired Gmail token...")
-                    creds.refresh(Request())
-                else:
-                    logger.info("🌐 Starting OAuth2 flow for Gmail...")
-                    
-                    # Create OAuth flow from environment variables
-                    client_config = {
-                        "installed": {
-                            "client_id": client_id,
-                            "client_secret": client_secret,
-                            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                            "token_uri": "https://oauth2.googleapis.com/token",
-                            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                            "redirect_uris": ["http://localhost"]
+            delegated_user = os.getenv('GMAIL_DELEGATED_USER')
+
+            if delegated_user:
+                logger.info(f"🔑 Authenticating Gmail via domain-wide delegation as {delegated_user}...")
+                creds = self._get_delegated_credentials(delegated_user)
+            else:
+                credentials_dir = os.getenv('GMAIL_CREDENTIALS_DIR', 'config/credentials')
+                token_file = os.path.join(credentials_dir, 'gmail_token.json')
+
+                # Get OAuth credentials from environment variables
+                client_id = os.getenv('GMAIL_CLIENT_ID')
+                client_secret = os.getenv('GMAIL_CLIENT_SECRET')
+
+                logger.info(f"🔑 Authenticating Gmail API...")
+                logger.info(f"   📁 Token file: {token_file}")
+                logger.info(f"   🆔 Client ID: {client_id[:20]}..." if client_id else "   ❌ No Client ID found")
+
+                if not client_id or not client_secret:
+                    raise ValueError(
+                        "Gmail OAuth credentials not found in environment variables.\n"
+                        "Please set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET in your .env file"
+                    )
+
+                # Load existing token
+                if os.path.exists(token_file):
+                    logger.info("📄 Loading existing Gmail token...")
+                    creds = Credentials.from_authorized_user_file(token_file, self.SCOPES)
+
+                # If no valid credentials, go through OAuth flow
+                if not creds or not creds.valid:
+                    if creds and creds.expired and creds.refresh_token:
+                        logger.info("🔄 Refreshing expired Gmail token...")
+                        creds.refresh(Request())
+                    else:
+                        if os.getenv('K_SERVICE'):
+                            # Cloud Run has no browser — the installed-app flow
+                            # would hang forever. Use GMAIL_DELEGATED_USER instead.
+                            raise RuntimeError(
+                                "No valid Gmail token and interactive OAuth is "
+                                "impossible on Cloud Run. Set GMAIL_DELEGATED_USER "
+                                "(domain-wide delegation) for production."
+                            )
+                        logger.info("🌐 Starting OAuth2 flow for Gmail...")
+
+                        # Create OAuth flow from environment variables
+                        client_config = {
+                            "installed": {
+                                "client_id": client_id,
+                                "client_secret": client_secret,
+                                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                                "token_uri": "https://oauth2.googleapis.com/token",
+                                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                                "redirect_uris": ["http://localhost"]
+                            }
                         }
-                    }
-                    
-                    flow = InstalledAppFlow.from_client_config(client_config, self.SCOPES)
-                    creds = flow.run_local_server(port=0)
-                    logger.info("✅ OAuth2 flow completed successfully")
-                
-                # Save credentials for next run
-                os.makedirs(os.path.dirname(token_file), exist_ok=True)
-                with open(token_file, 'w') as token:
-                    token.write(creds.to_json())
-                logger.info(f"💾 Gmail token saved to {token_file}")
-            
+
+                        flow = InstalledAppFlow.from_client_config(client_config, self.SCOPES)
+                        creds = flow.run_local_server(port=0)
+                        logger.info("✅ OAuth2 flow completed successfully")
+
+                    # Save credentials for next run
+                    os.makedirs(os.path.dirname(token_file), exist_ok=True)
+                    with open(token_file, 'w') as token:
+                        token.write(creds.to_json())
+                    logger.info(f"💾 Gmail token saved to {token_file}")
+
             # Build Gmail service
             self.gmail_service = build('gmail', 'v1', credentials=creds)
             
