@@ -32,12 +32,26 @@ class DatabaseService:
             # Use settings instead of direct environment variables
             from urllib.parse import quote_plus
             
-            db_host = settings.DB_HOST
-            db_port = settings.DB_PORT
-            db_name = settings.DB_NAME
-            db_user = settings.DB_USER
-            db_password = settings.DB_PASSWORD.get_secret_value() if hasattr(settings.DB_PASSWORD, 'get_secret_value') else str(settings.DB_PASSWORD)
-            db_connection_name = settings.DB_CONNECTION_NAME
+            # NOTE: strip() every value. Secrets loaded via Cloud Run secretKeyRef
+            # are injected verbatim (unlike the app's own Secret Manager loader,
+            # which strips) — a trailing CRLF in db-user/db-name/etc. produces a
+            # username like "gabriel_app\r\n" and a misleading
+            # "password authentication failed" error. Stripping here is the
+            # durable guard against that class of corruption.
+            db_host = str(settings.DB_HOST).strip()
+            db_port = str(settings.DB_PORT).strip()
+            db_name = str(settings.DB_NAME).strip()
+            db_user = str(settings.DB_USER).strip()
+            db_password = (
+                settings.DB_PASSWORD.get_secret_value()
+                if hasattr(settings.DB_PASSWORD, "get_secret_value")
+                else str(settings.DB_PASSWORD)
+            ).strip()
+            db_connection_name = (
+                str(settings.DB_CONNECTION_NAME).strip()
+                if settings.DB_CONNECTION_NAME
+                else settings.DB_CONNECTION_NAME
+            )
             
             # Log configuration (without exposing password)
             logger.info(f"Database config - Host: {db_host}, Port: {db_port}, DB: {db_name}, User: {db_user}, "
