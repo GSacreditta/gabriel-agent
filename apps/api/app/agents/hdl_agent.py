@@ -123,23 +123,24 @@ class HDLAgent(BaseAgent):
                 "data": {
                     "query": """
                         INSERT INTO hdl_reviews (
-                            request_id, source_agent, request_type, data, 
+                            request_id, source_agent, request_type, data,
                             message, status, created_at, expires_at
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ) VALUES (:request_id, :source_agent, :request_type, :data,
+                                  :message, :status, :created_at, :expires_at)
                         ON CONFLICT (request_id) DO UPDATE SET
                             status = EXCLUDED.status,
                             data = EXCLUDED.data
                     """,
-                    "params": [
-                        review_data['request_id'],
-                        review_data['source_agent'], 
-                        review_data['request_type'],
-                        json.dumps(review_data['data']),
-                        review_data['message'],
-                        review_data['status'],
-                        review_data['created_at'],
-                        review_data['expires_at']
-                    ]
+                    "params": {
+                        "request_id": review_data['request_id'],
+                        "source_agent": review_data['source_agent'],
+                        "request_type": review_data['request_type'],
+                        "data": json.dumps(review_data['data']),
+                        "message": review_data['message'],
+                        "status": review_data['status'],
+                        "created_at": review_data['created_at'],
+                        "expires_at": review_data['expires_at'],
+                    }
                 }
             })
             
@@ -164,31 +165,32 @@ class HDLAgent(BaseAgent):
                 
             # Query DB agent for the review
             db_result = await self.send_message("DB_AGENT", {
-                "action": "execute_query", 
+                "action": "execute_query",
                 "data": {
                     "query": """
-                        SELECT request_id, source_agent, request_type, data, 
+                        SELECT request_id, source_agent, request_type, data,
                                message, status, created_at, expires_at
-                        FROM hdl_reviews 
-                        WHERE request_id = %s
+                        FROM hdl_reviews
+                        WHERE request_id = :request_id
                     """,
-                    "params": [request_id]
+                    "params": {"request_id": request_id}
                 }
             })
-            
+
             if db_result.get('status') == 'success':
                 rows = db_result.get('result', [])
                 if rows:
+                    # execute_query returns rows as dicts keyed by column name
                     row = rows[0]
                     review_data = {
-                        'request_id': row[0],
-                        'source_agent': row[1],
-                        'request_type': row[2],
-                        'data': json.loads(row[3]) if row[3] else {},
-                        'message': row[4],
-                        'status': row[5],
-                        'created_at': row[6],
-                        'expires_at': row[7]
+                        'request_id': row['request_id'],
+                        'source_agent': row['source_agent'],
+                        'request_type': row['request_type'],
+                        'data': json.loads(row['data']) if row['data'] else {},
+                        'message': row['message'],
+                        'status': row['status'],
+                        'created_at': row['created_at'],
+                        'expires_at': row['expires_at']
                     }
                     self.logger.info(f"✅ Review loaded from DB: {request_id}")
                     return review_data
